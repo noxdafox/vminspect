@@ -40,7 +40,7 @@ from lxml import etree
 from tempfile import NamedTemporaryFile
 from collections import namedtuple, defaultdict
 
-from .utils import launch_process, process_output
+from vminspect.utils import launch_process, process_output
 
 
 HIVEXML = 'hivexml'

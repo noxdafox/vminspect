@@ -32,7 +32,7 @@ import logging
 from guestfs import GuestFS
 from tempfile import NamedTemporaryFile
 
-from .utils import windows_path, unix_path
+from vminspect.utils import windows_path, unix_path
 
 
 def list_files(disk, identify=False, size=False):

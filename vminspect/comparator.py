@@ -36,10 +36,10 @@ import logging
 from pebble import thread
 from collections import defaultdict
 
-from .utils import unix_path, makedirs
-from .filesystem import FileSystem, add_file_type, add_file_size
+from vminspect.utils import unix_path, makedirs
+from vminspect.filesystem import FileSystem, add_file_type, add_file_size
 
-from .winregparser import registry_files, compare_registry_hives
+from vminspect.winregparser import registry_files, compare_registry_hives
 
 
 class DiskComparator:
@@ -262,7 +262,7 @@ def files_type(files, fs0, fs1):
     """Inspects the file type of the given files."""
     files['deleted_files'] = add_file_type(fs0, files['deleted_files'])
     for key in ('created_files', 'modified_files'):
-        files[key] = add_file_type(fs1, files['key'])
+        files[key] = add_file_type(fs1, files[key])
 
     return files
 
@@ -271,7 +271,7 @@ def files_size(files, fs0, fs1):
     """Gets the file size of the given files."""
     files['deleted_files'] = add_file_size(fs0, files['deleted_files'])
     for key in ('created_files', 'modified_files'):
-        files[key] = add_file_size(fs1, files['key'])
+        files[key] = add_file_size(fs1, files[key])
 
     return files
 

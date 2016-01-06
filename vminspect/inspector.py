@@ -32,8 +32,8 @@ import json
 import logging
 import argparse
 
-from .filesystem import list_files
-from .comparator import DiskComparator
+from vminspect.filesystem import list_files
+from vminspect.comparator import DiskComparator
 
 
 def main():
