@@ -28,12 +28,11 @@
 # EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-import os
 import logging
 from guestfs import GuestFS
 from tempfile import NamedTemporaryFile
 
-from vminspect.utils import windows_path, posix_path
+from vminspect.utils import windows_path, posix_path, registry_path
 
 
 def list_files(disk, identify=False, size=False):
@@ -136,14 +135,57 @@ class FileSystem(GuestFS):
         return (self._path(path, e) for e in super().find(path))
 
     def _path(self, *segments):
-        path = os.path.join(*segments)
-
         if self.inspect_get_type(self._root) == 'windows':
             drive = self.inspect_get_drive_mappings(self._root)[0][0]
 
-            return windows_path(drive, path)
+            return windows_path(drive, *segments)
         else:
-            return posix_path(path)
+            return posix_path(*segments)
+
+
+class WindowsFileSystem(FileSystem):
+    VALUE_MAP = {0: 'REG_NONE',
+                 1: 'REG_SZ',
+                 2: 'REG_EXPAND_SZ',
+                 3: 'REG_BINARY',
+                 4: 'REG_DWORD',
+                 5: 'REG_DWORD_BIG_ENDIAN',
+                 6: 'REG_DWORD_LINK',
+                 7: 'REG_MULTI_SZ',
+                 8: 'REG_RESOURCE_LIST',
+                 9: 'REG_FULL_RESOURCE_DESCRIPTOR',
+                 10: 'REG_RESOURCE_REQUIREMENTS_LIST',
+                 11: 'REG_QWORD'}
+
+    def registry(self, hive):
+        if self.inspect_get_type(self._root) != 'windows':
+            raise RuntimeError('Not a Windows File System')
+
+        self.hivex_open(posix_path(hive))
+
+        try:
+            yield from self._visit_registry(self.hivex_root())
+        finally:
+            self.hivex_close()
+
+    def _visit_registry(self, node, path=''):
+        path = registry_path(path, self.hivex_node_name(node))
+        values = map(self._parse_value, self.hivex_node_values(node))
+
+        yield (path, tuple(values))
+
+        for child in self.hivex_node_children(node):
+            yield from self._visit_registry(child['hivex_node_h'], path=path)
+
+    def _parse_value(self, value):
+        value = value['hivex_value_h']
+        value_type = self.hivex_value_type(value)
+        value_data = (value_type == 1 and self.hivex_value_utf8(value)
+                      or self.hivex_value_value(value))
+
+        return (self.hivex_value_key(value),
+                self.VALUE_MAP[value_type],
+                value_data)
 
 
 def add_file_type(filesystem, files):

@@ -30,17 +30,23 @@
 
 import os
 import re
+import ntpath
 import subprocess
 
 
-def windows_path(drive, path):
+def windows_path(drive, *segments):
     """Returns the Windows representation of the path."""
-    return "%s:%s" % (drive, path.replace('/', '\\'))
+    return "%s:%s" % (drive, os.path.join(*segments).replace('/', '\\'))
 
 
-def posix_path(path):
+def posix_path(*segments):
     """Returns the Posix representation of the path."""
-    return re.sub('^[a-zA-Z]:', '', path).replace('\\', '/')
+    return re.sub('^[a-zA-Z]:', '', os.path.join(*segments)).replace('\\', '/')
+
+
+def registry_path(*segments):
+    """Returns the Windows representation of the registry."""
+    return "%s" % ntpath.join(*segments)
 
 
 def makedirs(path):
