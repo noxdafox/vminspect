@@ -29,17 +29,18 @@
 
 
 import os
+import re
 import subprocess
 
 
-def windows_path(path):
+def windows_path(drive, path):
     """Returns the Windows representation of the path."""
-    return "C:%s" % path.replace('/', '\\')
+    return "%s:%s" % (drive, path.replace('/', '\\'))
 
 
-def unix_path(path):
-    """Returns the Linux representation of the path."""
-    return path.lstrip('C:').replace('\\', '/')
+def posix_path(path):
+    """Returns the Posix representation of the path."""
+    return re.sub('^[a-zA-Z]:', '', path).replace('\\', '/')
 
 
 def makedirs(path):

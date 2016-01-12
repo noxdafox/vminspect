@@ -36,7 +36,7 @@ import logging
 from pebble import thread
 from collections import defaultdict
 
-from vminspect.utils import unix_path, makedirs
+from vminspect.utils import posix_path, makedirs
 from vminspect.filesystem import FileSystem, add_file_type, add_file_size
 
 from vminspect.winregparser import registry_files, compare_registry_hives
@@ -191,7 +191,7 @@ def compare_filesystems(fs0, fs1, concurrent=False):
         files0 = fs0.list_files()
         files1 = fs1.list_files()
 
-    return compare_files(files0, files1)
+    return compare_files(dict(files0), dict(files1))
 
 
 def compare_files(files0, files1):
@@ -243,7 +243,7 @@ def extract_files(filesystem, files, path):
     failed_extractions = {}
 
     for file_to_extract in files:
-        source = unix_path(file_to_extract['path'])
+        source = posix_path(file_to_extract['path'])
         destination = os.path.join(path, file_to_extract['sha1'])
 
         if not os.path.exists(destination):

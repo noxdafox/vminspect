@@ -28,11 +28,12 @@
 # EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
+import os
 import logging
 from guestfs import GuestFS
 from tempfile import NamedTemporaryFile
 
-from vminspect.utils import windows_path, unix_path
+from vminspect.utils import windows_path, posix_path
 
 
 def list_files(disk, identify=False, size=False):
@@ -41,7 +42,8 @@ def list_files(disk, identify=False, size=False):
 
     with FileSystem(disk) as filesystem:
         logger.debug("Listing files.")
-        for path, digest in filesystem.list_files().items():
+
+        for path, digest in filesystem.list_files():
             results.append({'path': path, 'sha1': digest})
 
         if identify:
@@ -69,14 +71,6 @@ class FileSystem(GuestFS):
 
     def __exit__(self, *_):
         self.umount_disk()
-
-    @property
-    def os_type(self):
-        """Returns the Operating System type contained in the disk."""
-        if self._os_type is None:
-            self._os_type = self.inspect_get_type(self._root)
-
-        return self._os_type
 
     def mount_disk(self, readonly=True):
         """Mounts the given disk.
@@ -106,27 +100,6 @@ class FileSystem(GuestFS):
         else:
             raise RuntimeError("No OS found on the given disk image.")
 
-    def list_files(self):
-        """Lists the files contained within the disk.
-
-        Returns a dictionary:
-
-            {"C:\\Windows\\System32\\NTUSER.DAT": "sha1_hash"} for windows
-            {"/home/user/text.txt": "sha1_hash"} for other FS.
-
-        """
-        with NamedTemporaryFile(buffering=0) as tempfile:
-            self.checksums_out('sha1', '/', tempfile.name)
-
-            if self.os_type == 'windows':
-                return {windows_path(f[1].lstrip('.')): f[0] for f in
-                        (l.decode('utf8').strip().split(None, 1)
-                         for l in tempfile)}
-            else:
-                return {f[1].lstrip('.'): f[0] for f in
-                        (l.decode('utf8').strip().split(None, 1)
-                         for l in tempfile)}
-
     def umount_disk(self):
         """Unmounts the disk.
 
@@ -135,11 +108,48 @@ class FileSystem(GuestFS):
         """
         self.close()
 
+    def list_files(self, hashtype='sha1'):
+        """Lists the files contained within the disk.
+
+        Returns a tuple of tuples:
+
+            (("C:\\Windows\\System32\\NTUSER.DAT", "hash")) for windows
+            (("/home/user/text.txt", "hash")) for other FS
+
+        """
+        with NamedTemporaryFile(buffering=0) as tempfile:
+            self.checksums_out(hashtype, '/', tempfile.name)
+
+            return tuple((self._path(f[1].lstrip('.')), f[0])
+                         for f in (l.decode('utf8').strip().split(None, 1)
+                                   for l in tempfile))
+
+    def visit(self, path):
+        """Analogous of Unix find command.
+        Returns the list of files and directory at path.
+
+        Overrides GuestFS.find returning the absolute path of the FS nodes.
+
+        """
+        path = posix_path(path)
+
+        return (self._path(path, e) for e in super().find(path))
+
+    def _path(self, *segments):
+        path = os.path.join(*segments)
+
+        if self.inspect_get_type(self._root) == 'windows':
+            drive = self.inspect_get_drive_mappings(self._root)[0][0]
+
+            return windows_path(drive, path)
+        else:
+            return posix_path(path)
+
 
 def add_file_type(filesystem, files):
     """Inspects the file type of the given files."""
     for file_meta in files:
-        file_meta['type'] = filesystem.file(unix_path(file_meta['path']))
+        file_meta['type'] = filesystem.file(posix_path(file_meta['path']))
 
     return files
 
@@ -148,6 +158,6 @@ def add_file_size(filesystem, files):
     """Gets the file size of the given files."""
     for file_meta in files:
         file_meta['size'] = filesystem.stat(
-            unix_path(file_meta['path']))['size']
+            posix_path(file_meta['path']))['size']
 
     return files
