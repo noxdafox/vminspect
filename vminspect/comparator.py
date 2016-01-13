@@ -182,14 +182,14 @@ def compare_filesystems(fs0, fs1, concurrent=False):
 
     """
     if concurrent:
-        task0 = thread.concurrent(target=fs0.list_files)
-        task1 = thread.concurrent(target=fs1.list_files)
+        task0 = thread.concurrent(target=fs0.files, args=('/', ))
+        task1 = thread.concurrent(target=fs1.files, args=('/', ))
 
         files0 = task0.get()
         files1 = task1.get()
     else:
-        files0 = fs0.list_files()
-        files1 = fs1.list_files()
+        files0 = fs0.files('/')
+        files1 = fs1.files('/')
 
     return compare_files(dict(files0), dict(files1))
 

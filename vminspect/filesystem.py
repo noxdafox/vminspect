@@ -42,7 +42,7 @@ def list_files(disk, identify=False, size=False):
     with FileSystem(disk) as filesystem:
         logger.debug("Listing files.")
 
-        for path, digest in filesystem.list_files():
+        for path, digest in filesystem.files('/'):
             results.append({'path': path, 'sha1': digest})
 
         if identify:
@@ -85,6 +85,11 @@ class FileSystem(GuestFS):
             else:
                 self.mount(device, mountpoint)
 
+        if self.inspect_get_type(self._root) == 'windows':
+            self._path = self._windows_path
+        else:
+            self._path = self._posix_path
+
     def _inspect_disk(self):
         """Inspects the disk and returns the mountpoints mapping
         as a list which order is the supposed one for correct mounting.
@@ -107,40 +112,44 @@ class FileSystem(GuestFS):
         """
         self.close()
 
-    def list_files(self, hashtype='sha1'):
-        """Lists the files contained within the disk.
-
-        Returns a tuple of tuples:
-
-            (("C:\\Windows\\System32\\NTUSER.DAT", "hash")) for windows
-            (("/home/user/text.txt", "hash")) for other FS
-
-        """
-        with NamedTemporaryFile(buffering=0) as tempfile:
-            self.checksums_out(hashtype, '/', tempfile.name)
-
-            return tuple((self._path(f[1].lstrip('.')), f[0])
-                         for f in (l.decode('utf8').strip().split(None, 1)
-                                   for l in tempfile))
-
     def visit(self, path):
-        """Analogous of Unix find command.
-        Returns the list of files and directory at path.
-
-        Overrides GuestFS.find returning the absolute path of the FS nodes.
+        """Iterates over the files and directories contained within the disk
+        starting from the given path.
 
         """
         path = posix_path(path)
 
-        return (self._path(path, e) for e in super().find(path))
+        yield from (self._path(path, e) for e in super().find(path))
+
+    def files(self, path, hashtype='sha1'):
+        """Iterates over the files contained within the disk starting from
+        the given path.
+
+        The hashtype keyword allows to choose the file hashing algorithm.
+
+        Yields the following values:
+
+            "C:\\Windows\\System32\\NTUSER.DAT", "hash" for windows
+            "/home/user/text.txt", "hash" for other FS
+
+        """
+        with NamedTemporaryFile(buffering=0) as tempfile:
+            self.checksums_out(hashtype, posix_path(path), tempfile.name)
+
+            yield from ((self._path(f[1].lstrip('.')), f[0])
+                        for f in (l.decode('utf8').strip().split(None, 1)
+                                  for l in tempfile))
 
     def _path(self, *segments):
-        if self.inspect_get_type(self._root) == 'windows':
-            drive = self.inspect_get_drive_mappings(self._root)[0][0]
+        raise NotImplementedError("FileSystem needs to be mounted first")
 
-            return windows_path(drive, *segments)
-        else:
-            return posix_path(*segments)
+    def _posix_path(self, *segments):
+        return posix_path(*segments)
+
+    def _windows_path(self, *segments):
+        drive = self.inspect_get_drive_mappings(self._root)[0][0]
+
+        return windows_path(drive, *segments)
 
 
 class WindowsFileSystem(FileSystem):
@@ -158,6 +167,16 @@ class WindowsFileSystem(FileSystem):
                  11: 'REG_QWORD'}
 
     def registry(self, hive):
+        """Iterates over the registry keys contained within
+        the given hive path.
+
+            "\\Registry\\Key\\", (("ValueKey", "ValueType", ValueValue))
+
+        Example:
+
+            "\\Classes\\*", (("ViewModel", "REG_SZ", "delta"))
+
+        """
         if self.inspect_get_type(self._root) != 'windows':
             raise RuntimeError('Not a Windows File System')
 
@@ -172,7 +191,7 @@ class WindowsFileSystem(FileSystem):
         path = registry_path(path, self.hivex_node_name(node))
         values = map(self._parse_value, self.hivex_node_values(node))
 
-        yield (path, tuple(values))
+        yield path, tuple(values)
 
         for child in self.hivex_node_children(node):
             yield from self._visit_registry(child['hivex_node_h'], path=path)
