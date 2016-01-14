@@ -29,11 +29,10 @@
 
 
 __all__ = ['FileSystem',
-           'WindowsFileSystem',
            'list_files',
            'DiskComparator',
            'compare_filesystems']
 
 
-from vminspect.filesystem import FileSystem, WindowsFileSystem, list_files
+from vminspect.filesystem import FileSystem, list_files
 from vminspect.comparator import DiskComparator, compare_filesystems

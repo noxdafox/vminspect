@@ -39,8 +39,6 @@ from collections import defaultdict
 from vminspect.utils import posix_path, makedirs
 from vminspect.filesystem import FileSystem, add_file_type, add_file_size
 
-from vminspect.winregparser import registry_files, compare_registry_hives
-
 
 class DiskComparator:
     """Performs an in depth comparison of two given disk images."""
@@ -64,8 +62,7 @@ class DiskComparator:
         for filesystem in self.filesystems:
             filesystem.umount_disk()
 
-    def compare(self, extract=False, concurrent=False, identify=False,
-                size=False, path='.'):
+    def compare(self, concurrent=False, identify=False, size=False):
         """Compares the two disks according to flags.
 
         Generates the following report:
@@ -77,12 +74,6 @@ class DiskComparator:
              'modified_files': [{'path': '/file/both/disks/but/different',
                                  'sha1': 'sha1_of_the_file_on_disk0',
                                  'original_sha1': 'sha1_of_the_file_on_disk0'}]}
-
-        If extract is set to True,
-        it will extract the created and modified files into the folder given
-        by path/extracted_files and add the following values to the report.
-
-            {'extracted_files': [<sha1>, <sha1>]}
 
         If concurrent is set to True, the logic will use multiple CPUs to
         speed up the process.
@@ -102,32 +93,37 @@ class DiskComparator:
             self.logger.debug("Gatering file sizes.")
             results = files_size(results, *self.filesystems)
 
-        files = results['created_files'] + results['modified_files']
-
-        if extract:
-            self.logger.debug("Extracting files.")
-            extracted_files, failed = self._extract_files(files, path)
-
-            results['extracted_files'] = [f for f in extracted_files.keys()]
-            results['extraction_errors'] = [f for f in failed.keys()]
-
-        analyse_registry = False  # TODO: test
-        if analyse_registry:
-            self.logger.debug("Comparing registries.")
-            extracted_files = self._extract_registries(files, path, concurrent)
-            results['registry_changes'] = compare_registries(files,
-                                                             extracted_files)
-
         return results
 
-    def _extract_files(self, files, path):
+    def extract(self, disk, files, path='.'):
+        """Extracts the given files from the given disk.
+
+        Disk must be an integer (1 or 2) indicating from which of the two disks
+        to extract.
+
+        Files must be a list of dictionaries containing
+        the keys 'path' and 'sha1'.
+
+        Files will be extracted in path and will be named with their sha1.
+
+        Returns a dictionary.
+
+            {'extracted_files': [<sha1>, <sha1>],
+             'extraction_errors': [<sha1>, <sha1>]}
+
+        """
+        self.logger.debug("Extracting files.")
+        extracted_files, failed = self._extract_files(disk, files, path)
+
+        return {'extracted_files': [f for f in extracted_files.keys()],
+                'extraction_errors': [f for f in failed.keys()]}
+
+    def _extract_files(self, disk, files, path):
         path = os.path.join(path, 'extracted_files')
-        registry = registry_files(files, path_getter=lambda f: f.get('path'))
-        extract = (f for f in files if f not in registry)
 
         makedirs(path)
 
-        extracted, failed = extract_files(self.filesystems[1], extract, path)
+        extracted, failed = extract_files(self.filesystems[disk], files, path)
 
         self.logger.info("Files extracted into %s.", path)
         if failed:
@@ -136,33 +132,6 @@ class DiskComparator:
                 '\n'.join(failed.values()))
 
         return extracted, failed
-
-    def _extract_registries(self, files, path, concurrent):
-        self._assert_windows()
-
-        registry = registry_files(files, path_getter=lambda f: f.get('path'))
-        files0 = [{'sha1': f['original_sha1'], 'path': f['path']}
-                  for f in registry]
-        files1 = [{'sha1': f['sha1'], 'path': f['path']} for f in registry]
-
-        if concurrent:
-            task0 = thread.concurrent(target=extract_files,
-                                      args=(self.filesystems[0], files0, path))
-            task1 = thread.concurrent(target=extract_files,
-                                      args=(self.filesystems[1], files1, path))
-
-            files0 = task0.get()
-            files1 = task1.get()
-        else:
-            files0 = extract_files(self.filesystems[0], files0, path)
-            files1 = extract_files(self.filesystems[1], files1, path)
-
-        return files0 + files1
-
-    def _assert_windows(self):
-        for filesystem in self.filesystems:
-            if filesystem.os_type != 'windows':
-                raise RuntimeError("No Windows OS detected")
 
 
 def compare_filesystems(fs0, fs1, concurrent=False):
@@ -274,25 +243,3 @@ def files_size(files, fs0, fs1):
         files[key] = add_file_size(fs1, files[key])
 
     return files
-
-
-def compare_registries(files, extracted_files):
-    """Compares all the registry hive files and aggregates the results."""
-    registry_changes = defaultdict(list)
-
-    for registry_file in registry_files(files,
-                                        path_getter=lambda f: f.get('path')):
-        old_registry_path = extracted_files[registry_file['original_sha1']]
-        new_registry_path = extracted_files[registry_file['sha1']]
-
-        try:
-            registry_activity = compare_registry_hives(old_registry_path,
-                                                       new_registry_path)
-        except RuntimeError as error:
-            raise RuntimeError("Unable to process registry hives %s, %s: %s"
-                               % (old_registry_path, new_registry_path, error))
-
-        for key, value in registry_activity.items():
-            registry_changes[key].extend(value)
-
-    return registry_changes

@@ -32,8 +32,9 @@ import json
 import logging
 import argparse
 
-from vminspect.filesystem import list_files
+from vminspect.winreg import registry
 from vminspect.comparator import DiskComparator
+from vminspect.filesystem import FileSystem, list_files
 
 
 def main():
@@ -46,6 +47,8 @@ def main():
         results = list_files_command(arguments)
     elif arguments.name == 'compare':
         results = compare_command(arguments)
+    elif arguments.name == 'registry':
+        results = registry_command(arguments)
 
     print(json.dumps(results, indent=2))
 
@@ -57,11 +60,21 @@ def list_files_command(arguments):
 
 def compare_command(arguments):
     with DiskComparator(arguments.disk1, arguments.disk2) as comparator:
-        return comparator.compare(extract=arguments.extract,
-                                  concurrent=arguments.concurrent,
-                                  path=arguments.path,
-                                  identify=arguments.identify,
-                                  size=arguments.size)
+        results = comparator.compare(concurrent=arguments.concurrent,
+                                     identify=arguments.identify,
+                                     size=arguments.size)
+        if arguments.extract:
+            extract = results['created_files'] + results['modified_files']
+            files = comparator.extract(1, extract, path=arguments.path)
+
+            results.update(files)
+
+    return results
+
+
+def registry_command(arguments):
+    with FileSystem(arguments.disk) as filesystem:
+        return registry(filesystem, arguments.registry)
 
 
 def parse_arguments():
@@ -95,6 +108,7 @@ def parse_arguments():
                              default=False, help='report file types')
     list_parser.add_argument('-s', '--size', action='store_true',
                              default=False, help='report file sizes')
+
 
     return parser.parse_args()
 
