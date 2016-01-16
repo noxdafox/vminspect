@@ -32,9 +32,9 @@ import json
 import logging
 import argparse
 
-from vminspect.winreg import registry
+from vminspect.filesystem import list_files
+from vminspect.winreg import parse_registry
 from vminspect.comparator import DiskComparator
-from vminspect.filesystem import FileSystem, list_files
 
 
 def main():
@@ -73,8 +73,7 @@ def compare_command(arguments):
 
 
 def registry_command(arguments):
-    with FileSystem(arguments.disk) as filesystem:
-        return registry(filesystem, arguments.registry)
+    return parse_registry(arguments.hive, disk=arguments.disk)
 
 
 def parse_arguments():
@@ -84,6 +83,7 @@ def parse_arguments():
 
     subparsers = parser.add_subparsers(dest='name', title='subcommands',
                                        description='valid subcommands')
+
     list_parser = subparsers.add_parser('list',
                                         help='Lists the content of a disk.')
     list_parser.add_argument('disk', type=str, help='path to disk image')
@@ -109,6 +109,11 @@ def parse_arguments():
     list_parser.add_argument('-s', '--size', action='store_true',
                              default=False, help='report file sizes')
 
+    list_parser = subparsers.add_parser(
+        'registry', help='Lists the content of a registry file.')
+    list_parser.add_argument('hive', type=str, help='path to hive file')
+    list_parser.add_argument('-d', '--disk', type=str, default=None,
+                             help='path to disk image')
 
     return parser.parse_args()
 

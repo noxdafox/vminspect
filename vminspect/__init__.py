@@ -30,9 +30,12 @@
 
 __all__ = ['FileSystem',
            'list_files',
+           'RegistryHive',
+           'parse_registry',
            'DiskComparator',
            'compare_filesystems']
 
 
 from vminspect.filesystem import FileSystem, list_files
+from vminspect.winreg import RegistryHive, parse_registry
 from vminspect.comparator import DiskComparator, compare_filesystems

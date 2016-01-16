@@ -12,7 +12,7 @@ Even though all the precautions have been taken, if misused this library can cau
 
 The author is not responsible for any damage or data loss deriving from the usage of this tool.
 
-Analysing disk images may take several minutes and lots of resources from the computer.
+Analysing disk images may take several minutes and quite many of resources from the computer.
 
 The availability of hardware acceleration (KVM) as well as the use of concurrency speed up the process quite sensitively.
 
@@ -80,6 +80,7 @@ Compare two disk images. Installation of lynx browser on Ubuntu.
    }
 
 Compare two disk images. ZeroAccess malware on Windows 7.
+
 Highlighted the executable dropping location and two libraries (32 and 64 bit versions) disguised as Desktop.ini files as well as the deletion of Windows Defender related files.
 
 ::
@@ -118,5 +119,28 @@ Highlighted the executable dropping location and two libraries (32 and 64 bit ve
        },
        ...
      ]
+     ...
+   }
+
+List the content of the SOFTWARE registry hive.
+
+::
+
+   python inspect.py registry --disk windows7.qcow2 C:\\Windows\\System32\\config\\SOFTWARE
+
+   {
+     "HKLM\\Microsoft\\Windows Defender\\Signature Updates": [
+       [
+         "EngineVersion",
+         "REG_SZ",
+         "1.1.6402.0"
+       ],
+       [
+         "ASSignatureVersion",
+         "REG_SZ",
+         "1.95.191.0"
+       ],
+       ...
+     ],
      ...
    }
