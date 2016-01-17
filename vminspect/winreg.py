@@ -30,6 +30,7 @@
 
 import os
 import codecs
+from pebble import process
 from hivex import Hivex, hive_types
 from tempfile import NamedTemporaryFile
 
@@ -61,16 +62,16 @@ REGISTRY_TYPE = {'DEFAULT': 'HKU',
                  'SOFTWARE': 'HKLM'}
 
 
-REGISTRY_PATH = ('C:\\Windows\\System32\\config\\SAM',
+REGISTRY_PATH = ['C:\\Windows\\System32\\config\\SAM',
                  'C:\\Windows\\System32\\config\\SYSTEM',
                  'C:\\Windows\\System32\\config\\DEFAULT',
                  'C:\\Windows\\System32\\config\\SOFTWARE',
-                 'C:\\Windows\\System32\\config\\SECURITY')
+                 'C:\\Windows\\System32\\config\\SECURITY']
 
 
-USER_REGISTRY_PATH = (
-    'C:\\Users\\.*\\NTUSER.DAT',
-    'C:\\Users\\.*\\AppData\\Local\\Microsoft\\Windows\\UsrClass.dat')
+USER_REGISTRY_PATH = [
+    'C:\\Users\\{}\\NTUSER.DAT',
+    'C:\\Users\\{}\\AppData\\Local\\Microsoft\\Windows\\UsrClass.dat']
 
 
 def parse_registry(hive, disk=None, filesystem=None):
@@ -145,7 +146,10 @@ class RegistryHive(Hivex):
     def _parse_value(self, value):
         vtype = self.value_type(value)[0]
         value_type = VALUE_TYPES.get(vtype, 'UNIDENTIFIED')
-        value_data = self._types_map.get(vtype, self._value_data)(value)
+        try:
+            value_data = self._types_map.get(vtype, self._value_data)(value)
+        except RuntimeError:
+            value_data = self._value_data(value)
 
         return self.value_key(value), value_type, str(value_data)
 
@@ -163,20 +167,64 @@ def extract_registry(filesystem, hive):
 
 
 def compare_registries(fs0, fs1, concurrent=False):
-    registries = compare_hive_files(fs0, fs1)
+    hives = compare_hives(fs0, fs1)
 
     if concurrent:
-        task0 = process.concurrent(parse_registries, args=(fs0, registries))
-        task1 = process.concurrent(parse_registries, args=(fs1, registries))
+        task0 = process.concurrent(target=parse_registries, args=(fs0, hives))
+        task1 = process.concurrent(target=parse_registries, args=(fs1, hives))
 
-        registries0 = task0.get()
-        registries1 = task1.get()
+        registry0 = task0.get()
+        registry1 = task1.get()
     else:
-        registries0 = parse_registries(fs0, registries)
-        registries1 = parse_registries(fs1, registries)
+        registry0 = parse_registries(fs0, hives)
+        registry1 = parse_registries(fs1, hives)
+
+    return compare_registry(registry0, registry1)
 
 
-def compare_hive_files(fs0, fs1):
+def compare_registry(registry0, registry1):
+    comparison = {'created_keys': {},
+                  'deleted_keys': [],
+                  'created_values': {},
+                  'deleted_values': {},
+                  'modified_values': {}}
+
+    for key, values in registry1.items():
+        if key in registry0:
+            if values != registry0[key]:
+                created, deleted, modified = compare_values(registry0[key],
+                                                            values)
+
+                if created:
+                    comparison['created_values'][key] = created
+                if deleted:
+                    comparison['deleted_values'][key] = deleted
+                if modified:
+                    comparison['modified_values'][key] = modified
+        else:
+            comparison['created_keys'][key] = values
+
+    for key in registry0.keys():
+        if key not in registry1:
+            comparison['deleted_keys'].append(key)
+
+    return comparison
+
+
+def compare_values(values0, values1):
+    values0 = {v[0]: v[1:] for v in values0}
+    values1 = {v[0]: v[1:] for v in values1}
+
+    created = [(k, v[0], v[1]) for k, v in values1.items() if k not in values0]
+    deleted = [(k, v[0], v[1]) for k, v in values0.items() if k not in values1]
+    modified = [(k, v[0], v[1]) for k, v in values0.items()
+                if v != values1.get(k, None)]
+
+    return created, deleted, modified
+
+
+def compare_hives(fs0, fs1):
+    """Returns hives with different sha1s."""
     registries = []
 
     for path in REGISTRY_PATH + user_registries(fs0, fs1):
@@ -192,45 +240,24 @@ def user_registries(fs0, fs1):
     registries = []
 
     for user in fs0.ls(posix_path('C:\\Users\\')):
-        path = posix_path('C:\\Users\\', user)
+        paths = [posix_path(p.format(user)) for p in USER_REGISTRY_PATH]
 
-        if fs1.exists(path):
-            registries.append(windows_path(path))
+        for path in paths:
+            if fs1.exists(path):
+                registries.append(fs1.path(path))
 
     return registries
 
 
 def parse_registries(filesystem, registries):
-    """Returns a dictionary containing the registries.
+    """Returns a dictionary with the content of the given registry hives.
 
     {"\\Registry\\Key\\", (("ValueKey", "ValueType", ValueValue))}
 
     """
-    registries = {}
+    results = {}
 
     for path in registries:
-        registries.update(parse_registry(path, filesystem=filesystem))
+        results.update(parse_registry(path, filesystem=filesystem))
 
-    return registries
-
-
-def visit_registry(filesystem, node, path=''):
-    path = registry_path(path, filesystem.hivex_node_name(node))
-    values = (parse_value(filesystem, value)
-              for value in filesystem.hivex_node_values(node))
-
-    yield path, tuple(values)
-
-    for child in filesystem.hivex_node_children(node):
-        yield from visit_registry(filesystem, child['hivex_node_h'], path=path)
-
-
-def parse_value(filesystem, value):
-    value = value['hivex_value_h']
-    value_type = filesystem.hivex_value_type(value)
-    value_data = (value_type == 1 and filesystem.hivex_value_utf8(value)
-                  or filesystem.hivex_value_value(value))
-
-    return (filesystem.hivex_value_key(value),
-            REGISTRY_VALUE_MAP[value_type],
-            value_data)
+    return results

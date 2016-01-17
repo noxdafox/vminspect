@@ -71,6 +71,11 @@ class FileSystem(GuestFS):
     def __exit__(self, *_):
         self.umount_disk()
 
+    @property
+    def osname(self):
+        """Returns the Operating System name."""
+        return self.inspect_get_type(self._root)
+
     def mount_disk(self, readonly=True):
         """Mounts the given disk.
         It must be called before any other method.
@@ -86,9 +91,9 @@ class FileSystem(GuestFS):
                 self.mount(device, mountpoint)
 
         if self.inspect_get_type(self._root) == 'windows':
-            self._path = self._windows_path
+            self.path = self._windows_path
         else:
-            self._path = self._posix_path
+            self.path = self._posix_path
 
     def _inspect_disk(self):
         """Inspects the disk and returns the mountpoints mapping
@@ -112,14 +117,14 @@ class FileSystem(GuestFS):
         """
         self.close()
 
-    def visit(self, path):
+    def nodes(self, path):
         """Iterates over the files and directories contained within the disk
         starting from the given path.
 
         """
         path = posix_path(path)
 
-        yield from (self._path(path, e) for e in super().find(path))
+        yield from (self.path(path, e) for e in super().find(path))
 
     def files(self, path, hashtype='sha1'):
         """Iterates over the files contained within the disk starting from
@@ -136,11 +141,12 @@ class FileSystem(GuestFS):
         with NamedTemporaryFile(buffering=0) as tempfile:
             self.checksums_out(hashtype, posix_path(path), tempfile.name)
 
-            yield from ((self._path(f[1].lstrip('.')), f[0])
+            yield from ((self.path(f[1].lstrip('.')), f[0])
                         for f in (l.decode('utf8').strip().split(None, 1)
                                   for l in tempfile))
 
-    def _path(self, *segments):
+    def path(self, *segments):
+        """Normalizes the path in the File System format."""
         raise NotImplementedError("FileSystem needs to be mounted first")
 
     def _posix_path(self, *segments):

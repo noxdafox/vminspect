@@ -36,6 +36,7 @@ import logging
 from pebble import thread
 from collections import defaultdict
 
+from vminspect.winreg import compare_registries
 from vminspect.utils import posix_path, makedirs
 from vminspect.filesystem import FileSystem, add_file_type, add_file_size
 
@@ -118,6 +119,13 @@ class DiskComparator:
         return {'extracted_files': [f for f in extracted_files.keys()],
                 'extraction_errors': [f for f in failed.keys()]}
 
+    def compare_registry(self, concurrent=False):
+        self.logger.debug("Comparing Windows registries.")
+
+        self._assert_windows()
+
+        return compare_registries(*self.filesystems, concurrent=concurrent)
+
     def _extract_files(self, disk, files, path):
         path = os.path.join(path, 'extracted_files')
 
@@ -132,6 +140,10 @@ class DiskComparator:
                 '\n'.join(failed.values()))
 
         return extracted, failed
+
+    def _assert_windows(self):
+        if not all((fs.osname == 'windows' for fs in self.filesystems)):
+            raise RuntimeError("Both disks must contain a Windows File System")
 
 
 def compare_filesystems(fs0, fs1, concurrent=False):
@@ -151,14 +163,14 @@ def compare_filesystems(fs0, fs1, concurrent=False):
 
     """
     if concurrent:
-        task0 = thread.concurrent(target=fs0.files, args=('/', ))
-        task1 = thread.concurrent(target=fs1.files, args=('/', ))
+        task0 = thread.concurrent(target=visit_filesystem, args=(fs0, ))
+        task1 = thread.concurrent(target=visit_filesystem, args=(fs1, ))
 
         files0 = task0.get()
         files1 = task1.get()
     else:
-        files0 = fs0.files('/')
-        files1 = fs1.files('/')
+        files0 = visit_filesystem(fs0)
+        files1 = visit_filesystem(fs1)
 
     return compare_files(dict(files0), dict(files1))
 
@@ -225,6 +237,17 @@ def extract_files(filesystem, files, path):
             extracted_files[file_to_extract['sha1']] = destination
 
     return extracted_files, failed_extractions
+
+
+def visit_filesystem(filesystem):
+    """Utility function for running the files iterator at once.
+
+    Returns a dictionary.
+
+        {'/path/on/filesystem': 'file_hash'}
+
+    """
+    return dict(filesystem.files('/'))
 
 
 def files_type(files, fs0, fs1):

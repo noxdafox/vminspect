@@ -69,6 +69,12 @@ def compare_command(arguments):
 
             results.update(files)
 
+        if arguments.registry:
+            registry = comparator.compare_registry(
+                concurrent=arguments.concurrent)
+
+            results['registry'] = registry
+
     return results
 
 
@@ -92,28 +98,31 @@ def parse_arguments():
     list_parser.add_argument('-s', '--size', action='store_true',
                              default=False, help='report file sizes')
 
-    list_parser = subparsers.add_parser('compare',
+    compare_parser = subparsers.add_parser('compare',
                                         help='Compares two disks.')
 
-    list_parser.add_argument('disk1', type=str, help='path to first disk image')
-    list_parser.add_argument('disk2', type=str,
-                             help='path to second disk image')
-    list_parser.add_argument('-c', '--concurrent', action='store_true',
-                             default=False, help='use concurrency')
-    list_parser.add_argument('-e', '--extract', action='store_true',
-                             default=False, help='extract new files')
-    list_parser.add_argument('-p', '--path', type=str, default='.',
-                             help='path where to extract files')
-    list_parser.add_argument('-i', '--identify', action='store_true',
-                             default=False, help='report file types')
-    list_parser.add_argument('-s', '--size', action='store_true',
-                             default=False, help='report file sizes')
+    compare_parser.add_argument('disk1', type=str,
+                                help='path to first disk image')
+    compare_parser.add_argument('disk2', type=str,
+                                help='path to second disk image')
+    compare_parser.add_argument('-c', '--concurrent', action='store_true',
+                                default=False, help='use concurrency')
+    compare_parser.add_argument('-e', '--extract', action='store_true',
+                                default=False, help='extract new files')
+    compare_parser.add_argument('-p', '--path', type=str, default='.',
+                                help='path where to extract files')
+    compare_parser.add_argument('-i', '--identify', action='store_true',
+                                default=False, help='report file types')
+    compare_parser.add_argument('-s', '--size', action='store_true',
+                                default=False, help='report file sizes')
+    compare_parser.add_argument('-r', '--registry', action='store_true',
+                                default=False, help='compare registry')
 
-    list_parser = subparsers.add_parser(
+    registry_parser = subparsers.add_parser(
         'registry', help='Lists the content of a registry file.')
-    list_parser.add_argument('hive', type=str, help='path to hive file')
-    list_parser.add_argument('-d', '--disk', type=str, default=None,
-                             help='path to disk image')
+    registry_parser.add_argument('hive', type=str, help='path to hive file')
+    registry_parser.add_argument('-d', '--disk', type=str, default=None,
+                                 help='path to disk image')
 
     return parser.parse_args()
 
