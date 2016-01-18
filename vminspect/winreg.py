@@ -28,6 +28,9 @@
 # EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
+"""Module for parsing Windows Registry hive files."""
+
+
 import os
 import codecs
 from pebble import process
@@ -164,100 +167,3 @@ def extract_registry(filesystem, hive):
         filesystem.download(posix_path(hive), tempfile.name)
 
         return RegistryHive(tempfile.name)
-
-
-def compare_registries(fs0, fs1, concurrent=False):
-    hives = compare_hives(fs0, fs1)
-
-    if concurrent:
-        task0 = process.concurrent(target=parse_registries, args=(fs0, hives))
-        task1 = process.concurrent(target=parse_registries, args=(fs1, hives))
-
-        registry0 = task0.get()
-        registry1 = task1.get()
-    else:
-        registry0 = parse_registries(fs0, hives)
-        registry1 = parse_registries(fs1, hives)
-
-    return compare_registry(registry0, registry1)
-
-
-def compare_registry(registry0, registry1):
-    comparison = {'created_keys': {},
-                  'deleted_keys': [],
-                  'created_values': {},
-                  'deleted_values': {},
-                  'modified_values': {}}
-
-    for key, values in registry1.items():
-        if key in registry0:
-            if values != registry0[key]:
-                created, deleted, modified = compare_values(registry0[key],
-                                                            values)
-
-                if created:
-                    comparison['created_values'][key] = created
-                if deleted:
-                    comparison['deleted_values'][key] = deleted
-                if modified:
-                    comparison['modified_values'][key] = modified
-        else:
-            comparison['created_keys'][key] = values
-
-    for key in registry0.keys():
-        if key not in registry1:
-            comparison['deleted_keys'].append(key)
-
-    return comparison
-
-
-def compare_values(values0, values1):
-    values0 = {v[0]: v[1:] for v in values0}
-    values1 = {v[0]: v[1:] for v in values1}
-
-    created = [(k, v[0], v[1]) for k, v in values1.items() if k not in values0]
-    deleted = [(k, v[0], v[1]) for k, v in values0.items() if k not in values1]
-    modified = [(k, v[0], v[1]) for k, v in values0.items()
-                if v != values1.get(k, None)]
-
-    return created, deleted, modified
-
-
-def compare_hives(fs0, fs1):
-    """Returns hives with different sha1s."""
-    registries = []
-
-    for path in REGISTRY_PATH + user_registries(fs0, fs1):
-        if (fs0.checksum('sha1', posix_path(path)) !=
-            fs1.checksum('sha1', posix_path(path))):
-            registries.append(path)
-
-    return registries
-
-
-def user_registries(fs0, fs1):
-    """Returns the list of user registries present on both FileSystems."""
-    registries = []
-
-    for user in fs0.ls(posix_path('C:\\Users\\')):
-        paths = [posix_path(p.format(user)) for p in USER_REGISTRY_PATH]
-
-        for path in paths:
-            if fs1.exists(path):
-                registries.append(fs1.path(path))
-
-    return registries
-
-
-def parse_registries(filesystem, registries):
-    """Returns a dictionary with the content of the given registry hives.
-
-    {"\\Registry\\Key\\", (("ValueKey", "ValueType", ValueValue))}
-
-    """
-    results = {}
-
-    for path in registries:
-        results.update(parse_registry(path, filesystem=filesystem))
-
-    return results

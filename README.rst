@@ -23,6 +23,8 @@ Python 3: https://www.python.org/
 
 libguestfs: http://libguestfs.org/
 
+hivex: http://libguestfs.org/hivex.3.html
+
 Pebble: https://pypi.python.org/pypi/Pebble
 
 
@@ -83,9 +85,11 @@ Compare two disk images. ZeroAccess malware on Windows 7.
 
 Highlighted the executable dropping location and two libraries (32 and 64 bit versions) disguised as Desktop.ini files as well as the deletion of Windows Defender related files.
 
+On the Windows Registry is visible how the malware ensures its execution at machine's startup.
+
 ::
 
-   python inspect.py compare --identify windows7.qcow2 windows7zeroaccess.qcow2
+   python inspect.py compare --identify --registry windows7.qcow2 windows7zeroaccess.qcow2
 
    {
      "created_files": [
@@ -118,8 +122,20 @@ Highlighted the executable dropping location and two libraries (32 and 64 bit ve
          "type": "PE32+ executable (DLL) (GUI) x86-64",
        },
        ...
-     ]
+     ],
      ...
+     "registry": {
+       "created_keys": {
+         "\\HKLM\\ControlSet001\\services\\\u202eetadpug": [
+           ["ImagePath", "REG_SZ", "C:\\Program Files (x86)\\Google\\Desktop\\Install\\ ... \\GoogleUpdate.exe"],
+           ["DisplayName", "REG_SZ", "Google Update Service (gupdate)"],
+           ["Start", "REG_DWORD", "2"],
+           ...
+         ],
+         ...
+       },
+       ...
+     }
    }
 
 List the content of the SOFTWARE registry hive.

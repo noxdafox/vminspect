@@ -34,7 +34,7 @@ import argparse
 
 from vminspect.filesystem import list_files
 from vminspect.winreg import parse_registry
-from vminspect.comparator import DiskComparator
+from vminspect.comparator import compare_disks
 
 
 def main():
@@ -59,23 +59,11 @@ def list_files_command(arguments):
 
 
 def compare_command(arguments):
-    with DiskComparator(arguments.disk1, arguments.disk2) as comparator:
-        results = comparator.compare(concurrent=arguments.concurrent,
-                                     identify=arguments.identify,
-                                     size=arguments.size)
-        if arguments.extract:
-            extract = results['created_files'] + results['modified_files']
-            files = comparator.extract(1, extract, path=arguments.path)
-
-            results.update(files)
-
-        if arguments.registry:
-            registry = comparator.compare_registry(
-                concurrent=arguments.concurrent)
-
-            results['registry'] = registry
-
-    return results
+    return compare_disks(arguments.disk1, arguments.disk2,
+                         identify=arguments.identify, size=arguments.size,
+                         extract=arguments.extract, path=arguments.path,
+                         registry=arguments.registry,
+                         concurrent=arguments.concurrent)
 
 
 def registry_command(arguments):

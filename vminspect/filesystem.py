@@ -28,6 +28,9 @@
 # EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
+"""GuestFS wrapper to facilitate File System analysis."""
+
+
 import logging
 from guestfs import GuestFS
 from tempfile import NamedTemporaryFile

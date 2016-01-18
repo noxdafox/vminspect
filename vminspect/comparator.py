@@ -33,12 +33,32 @@
 
 import os
 import logging
-from pebble import thread
-from collections import defaultdict
+from pebble import process, thread
 
-from vminspect.winreg import compare_registries
 from vminspect.utils import posix_path, makedirs
 from vminspect.filesystem import FileSystem, add_file_type, add_file_size
+from vminspect.winreg import parse_registry, REGISTRY_PATH, USER_REGISTRY_PATH
+
+
+def compare_disks(disk1, disk2, identify=False, size=False, registry=False,
+                  extract=False, path='.', concurrent=False):
+    with DiskComparator(disk1, disk2) as comparator:
+        results = comparator.compare(concurrent=concurrent,
+                                     identify=identify,
+                                     size=size)
+        if extract:
+            extract = results['created_files'] + results['modified_files']
+            files = comparator.extract(1, extract, path=path)
+
+            results.update(files)
+
+        if registry:
+            registry = comparator.compare_registry(concurrent=concurrent)
+
+            results['registry'] = registry
+
+    return results
+
 
 
 class DiskComparator:
@@ -84,15 +104,18 @@ class DiskComparator:
 
         """
         self.logger.debug("Comparing FS contents.")
-        results = compare_filesystems(*self.filesystems, concurrent=concurrent)
+        results = compare_filesystems(self.filesystems[0], self.filesystems[1],
+                                      concurrent=concurrent)
 
         if identify:
             self.logger.debug("Gatering file types.")
-            results = files_type(results, *self.filesystems)
+            results = files_type(self.filesystems[0], self.filesystems[1],
+                                 results)
 
         if size:
             self.logger.debug("Gatering file sizes.")
-            results = files_size(results, *self.filesystems)
+            results = files_size(self.filesystems[0], self.filesystems[1],
+                                 results)
 
         return results
 
@@ -120,11 +143,31 @@ class DiskComparator:
                 'extraction_errors': [f for f in failed.keys()]}
 
     def compare_registry(self, concurrent=False):
+        """Compares the Windows Registry contained within the two File Systems.
+
+        It parses all the registry hive files contained within the disks
+        and generates the following report.
+
+            {'created_keys': {'\\Reg\\Key': (('Key', 'Type', 'Value'))}
+             'deleted_keys': ['\\Reg\\Key', ...],
+             'created_values': {'\\Reg\\Key': (('Key', 'Type', 'NewValue'))},
+             'deleted_values': {'\\Reg\\Key': (('Key', 'Type', 'OldValue'))},
+             'modified_values': {'\\Reg\\Key': (('Key', 'Type', 'NewValue'))}}
+
+        Only registry hives which are contained in both disks are compared.
+        If the second disk contains a new registry hive,
+        its content can be listed using winreg.RegistryHive.registry() method.
+
+        If the concurrent flag is True,
+        two processes will be used speeding up the comparison on multiple CPUs.
+
+        """
         self.logger.debug("Comparing Windows registries.")
 
         self._assert_windows()
 
-        return compare_registries(*self.filesystems, concurrent=concurrent)
+        return compare_registries(self.filesystems[0], self.filesystems[1],
+                                  concurrent=concurrent)
 
     def _extract_files(self, disk, files, path):
         path = os.path.join(path, 'extracted_files')
@@ -172,10 +215,10 @@ def compare_filesystems(fs0, fs1, concurrent=False):
         files0 = visit_filesystem(fs0)
         files1 = visit_filesystem(fs1)
 
-    return compare_files(dict(files0), dict(files1))
+    return file_comparison(files0, files1)
 
 
-def compare_files(files0, files1):
+def file_comparison(files0, files1):
     """Compares two dictionaries of files returning their difference.
 
         {'created_files': [<files in files1 and not in files0>],
@@ -183,24 +226,26 @@ def compare_files(files0, files1):
          'modified_files': [<files in both files0 and files1 but different>]}
 
     """
-    results = defaultdict(list)
+    comparison = {'created_files': [],
+                  'deleted_files': [],
+                  'modified_files': []}
 
     for path, sha1 in files1.items():
         if path in files0:
             if sha1 != files0[path]:
-                results['modified_files'].append(
+                comparison['modified_files'].append(
                     {'path': path,
                      'original_sha1': files0[path],
                      'sha1': sha1})
         else:
-            results['created_files'].append({'path': path,
-                                             'sha1': sha1})
+            comparison['created_files'].append({'path': path,
+                                                'sha1': sha1})
     for path, sha1 in files0.items():
         if path not in files1:
-            results['deleted_files'].append({'path': path,
-                                             'original_sha1': files0[path]})
+            comparison['deleted_files'].append({'path': path,
+                                                'original_sha1': files0[path]})
 
-    return results
+    return comparison
 
 
 def extract_files(filesystem, files, path):
@@ -239,6 +284,126 @@ def extract_files(filesystem, files, path):
     return extracted_files, failed_extractions
 
 
+def compare_registries(fs0, fs1, concurrent=False):
+    """Compares the Windows Registry contained within the two File Systems.
+
+    If the concurrent flag is True,
+    two processes will be used speeding up the comparison on multiple CPUs.
+
+    Returns a dictionary.
+
+        {'created_keys': {'\\Reg\\Key': (('Key', 'Type', 'Value'), ...)}
+         'deleted_keys': ['\\Reg\\Key', ...],
+         'created_values': {'\\Reg\\Key': (('Key', 'Type', 'NewValue'), ...)},
+         'deleted_values': {'\\Reg\\Key': (('Key', 'Type', 'OldValue'), ...)},
+         'modified_values': {'\\Reg\\Key': (('Key', 'Type', 'NewValue'), ...)}}
+
+    """
+    hives = compare_hives(fs0, fs1)
+
+    if concurrent:
+        task0 = process.concurrent(target=parse_registries, args=(fs0, hives))
+        task1 = process.concurrent(target=parse_registries, args=(fs1, hives))
+
+        registry0 = task0.get()
+        registry1 = task1.get()
+    else:
+        registry0 = parse_registries(fs0, hives)
+        registry1 = parse_registries(fs1, hives)
+
+    return registry_comparison(registry0, registry1)
+
+
+def registry_comparison(registry0, registry1):
+    """Compares two dictionaries of registry keys returning their difference."""
+    comparison = {'created_keys': {},
+                  'deleted_keys': [],
+                  'created_values': {},
+                  'deleted_values': {},
+                  'modified_values': {}}
+
+    for key, values in registry1.items():
+        if key in registry0:
+            if values != registry0[key]:
+                created, deleted, modified = compare_values(registry0[key],
+                                                            values)
+
+                if created:
+                    comparison['created_values'][key] = created
+                if deleted:
+                    comparison['deleted_values'][key] = deleted
+                if modified:
+                    comparison['modified_values'][key] = modified
+        else:
+            comparison['created_keys'][key] = values
+
+    for key in registry0.keys():
+        if key not in registry1:
+            comparison['deleted_keys'].append(key)
+
+    return comparison
+
+
+def compare_values(values0, values1):
+    """Compares all the values of a single registry key."""
+    values0 = {v[0]: v[1:] for v in values0}
+    values1 = {v[0]: v[1:] for v in values1}
+
+    created = [(k, v[0], v[1]) for k, v in values1.items() if k not in values0]
+    deleted = [(k, v[0], v[1]) for k, v in values0.items() if k not in values1]
+    modified = [(k, v[0], v[1]) for k, v in values0.items()
+                if v != values1.get(k, None)]
+
+    return created, deleted, modified
+
+
+def compare_hives(fs0, fs1):
+    """Compares all the windows registry hive files
+    returning those which differ.
+
+    """
+    registries = []
+
+    for path in REGISTRY_PATH + user_registries(fs0, fs1):
+        if (fs0.checksum('sha1', posix_path(path)) !=
+            fs1.checksum('sha1', posix_path(path))):
+            registries.append(path)
+
+    return registries
+
+
+def user_registries(fs0, fs1):
+    """Returns the list of user registries present on both FileSystems."""
+    registries = []
+
+    for user in fs0.ls(posix_path('C:\\Users\\')):
+        paths = [posix_path(p.format(user)) for p in USER_REGISTRY_PATH]
+
+        for path in paths:
+            if fs1.exists(path):
+                registries.append(fs1.path(path))
+
+    return registries
+
+
+def files_type(fs0, fs1, files):
+    """Inspects the file type of the given files."""
+    files['deleted_files'] = add_file_type(fs0, files['deleted_files'])
+    for key in ('created_files', 'modified_files'):
+        files[key] = add_file_type(fs1, files[key])
+
+    return files
+
+
+def files_size(fs0, fs1, files):
+    """Gets the file size of the given files."""
+    files['deleted_files'] = add_file_size(fs0, files['deleted_files'])
+    for key in ('created_files', 'modified_files'):
+        files[key] = add_file_size(fs1, files[key])
+
+    return files
+
+
 def visit_filesystem(filesystem):
     """Utility function for running the files iterator at once.
 
@@ -250,19 +415,15 @@ def visit_filesystem(filesystem):
     return dict(filesystem.files('/'))
 
 
-def files_type(files, fs0, fs1):
-    """Inspects the file type of the given files."""
-    files['deleted_files'] = add_file_type(fs0, files['deleted_files'])
-    for key in ('created_files', 'modified_files'):
-        files[key] = add_file_type(fs1, files[key])
+def parse_registries(filesystem, registries):
+    """Returns a dictionary with the content of the given registry hives.
 
-    return files
+    {"\\Registry\\Key\\", (("ValueKey", "ValueType", ValueValue))}
 
+    """
+    results = {}
 
-def files_size(files, fs0, fs1):
-    """Gets the file size of the given files."""
-    files['deleted_files'] = add_file_size(fs0, files['deleted_files'])
-    for key in ('created_files', 'modified_files'):
-        files[key] = add_file_size(fs1, files[key])
+    for path in registries:
+        results.update(parse_registry(path, filesystem=filesystem))
 
-    return files
+    return results
