@@ -35,30 +35,8 @@ import os
 import logging
 from pebble import process, thread
 
-from vminspect.utils import posix_path, makedirs
-from vminspect.filesystem import FileSystem, add_file_type, add_file_size
+from vminspect.filesystem import FileSystem
 from vminspect.winreg import parse_registry, REGISTRY_PATH, USER_REGISTRY_PATH
-
-
-def compare_disks(disk1, disk2, identify=False, size=False, registry=False,
-                  extract=False, path='.', concurrent=False):
-    with DiskComparator(disk1, disk2) as comparator:
-        results = comparator.compare(concurrent=concurrent,
-                                     identify=identify,
-                                     size=size)
-        if extract:
-            extract = results['created_files'] + results['modified_files']
-            files = comparator.extract(1, extract, path=path)
-
-            results.update(files)
-
-        if registry:
-            registry = comparator.compare_registry(concurrent=concurrent)
-
-            results['registry'] = registry
-
-    return results
-
 
 
 class DiskComparator:
@@ -75,13 +53,13 @@ class DiskComparator:
                             FileSystem(self.disks[1]))
 
         for filesystem in self.filesystems:
-            filesystem.mount_disk()
+            filesystem.mount()
 
         return self
 
     def __exit__(self, *_):
         for filesystem in self.filesystems:
-            filesystem.umount_disk()
+            filesystem.umount()
 
     def compare(self, concurrent=False, identify=False, size=False):
         """Compares the two disks according to flags.
@@ -269,7 +247,7 @@ def extract_files(filesystem, files, path):
     failed_extractions = {}
 
     for file_to_extract in files:
-        source = posix_path(file_to_extract['path'])
+        source = file_to_extract['path']
         destination = os.path.join(path, file_to_extract['sha1'])
 
         if not os.path.exists(destination):
@@ -365,8 +343,7 @@ def compare_hives(fs0, fs1):
     registries = []
 
     for path in REGISTRY_PATH + user_registries(fs0, fs1):
-        if (fs0.checksum('sha1', posix_path(path)) !=
-            fs1.checksum('sha1', posix_path(path))):
+        if fs0.checksum(path) != fs1.checksum(path):
             registries.append(path)
 
     return registries
@@ -376,30 +353,30 @@ def user_registries(fs0, fs1):
     """Returns the list of user registries present on both FileSystems."""
     registries = []
 
-    for user in fs0.ls(posix_path('C:\\Users\\')):
-        paths = [posix_path(p.format(user)) for p in USER_REGISTRY_PATH]
-
-        for path in paths:
+    for user in fs0.ls('C:\\Users'):
+        for path in (p.format(user) for p in USER_REGISTRY_PATH):
             if fs1.exists(path):
-                registries.append(fs1.path(path))
+                registries.append(path)
 
     return registries
 
 
 def files_type(fs0, fs1, files):
     """Inspects the file type of the given files."""
-    files['deleted_files'] = add_file_type(fs0, files['deleted_files'])
-    for key in ('created_files', 'modified_files'):
-        files[key] = add_file_type(fs1, files[key])
+    for file_meta in files['deleted_files']:
+        file_meta['type'] = fs0.file(file_meta['path'])
+    for file_meta in files['created_files'] + files['modified_files']:
+        file_meta['type'] = fs1.file(file_meta['path'])
 
     return files
 
 
 def files_size(fs0, fs1, files):
     """Gets the file size of the given files."""
-    files['deleted_files'] = add_file_size(fs0, files['deleted_files'])
-    for key in ('created_files', 'modified_files'):
-        files[key] = add_file_size(fs1, files[key])
+    for file_meta in files['deleted_files']:
+        file_meta['type'] = fs0.stat(file_meta['path'])['size']
+    for file_meta in files['created_files'] + files['modified_files']:
+        file_meta['type'] = fs1.stat(file_meta['path'])['size']
 
     return files
 
@@ -412,7 +389,7 @@ def visit_filesystem(filesystem):
         {'/path/on/filesystem': 'file_hash'}
 
     """
-    return dict(filesystem.files('/'))
+    return dict(filesystem.checksums('/'))
 
 
 def parse_registries(filesystem, registries):
@@ -427,3 +404,9 @@ def parse_registries(filesystem, registries):
         results.update(parse_registry(path, filesystem=filesystem))
 
     return results
+
+
+def makedirs(path):
+    """Creates the directory tree if non existing."""
+    if not os.path.exists(path):
+        os.makedirs(path)

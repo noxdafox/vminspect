@@ -32,9 +32,9 @@ import json
 import logging
 import argparse
 
-from vminspect.filesystem import list_files
+from vminspect.filesystem import FileSystem
 from vminspect.winreg import parse_registry
-from vminspect.comparator import compare_disks
+from vminspect.comparator import DiskComparator
 
 
 def main():
@@ -58,12 +58,53 @@ def list_files_command(arguments):
                       size=arguments.size)
 
 
+def list_files(disk, identify=False, size=False):
+    logger = logging.getLogger('filesystem')
+
+    with FileSystem(disk) as filesystem:
+        logger.debug("Listing files.")
+        files = [{'path': path, 'sha1': digest}
+                 for path, digest in filesystem.checksums('/')]
+
+        if identify:
+            logger.debug("Gatering file types.")
+            for file_meta in files:
+                file_meta['type'] = filesystem.file(file_meta['path'])
+
+        if size:
+            logger.debug("Gatering file sizes.")
+            for file_meta in files:
+                file_meta['size'] = filesystem.stat(file_meta['path'])['size']
+
+    return files
+
+
 def compare_command(arguments):
     return compare_disks(arguments.disk1, arguments.disk2,
                          identify=arguments.identify, size=arguments.size,
                          extract=arguments.extract, path=arguments.path,
                          registry=arguments.registry,
                          concurrent=arguments.concurrent)
+
+
+def compare_disks(disk1, disk2, identify=False, size=False, registry=False,
+                  extract=False, path='.', concurrent=False):
+    with DiskComparator(disk1, disk2) as comparator:
+        results = comparator.compare(concurrent=concurrent,
+                                     identify=identify,
+                                     size=size)
+        if extract:
+            extract = results['created_files'] + results['modified_files']
+            files = comparator.extract(1, extract, path=path)
+
+            results.update(files)
+
+        if registry:
+            registry = comparator.compare_registry(concurrent=concurrent)
+
+            results['registry'] = registry
+
+    return results
 
 
 def registry_command(arguments):

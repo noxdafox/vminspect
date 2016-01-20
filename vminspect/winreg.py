@@ -32,13 +32,13 @@
 
 
 import os
+import ntpath
 import codecs
 from pebble import process
 from hivex import Hivex, hive_types
 from tempfile import NamedTemporaryFile
 
-from vminspect.filesystem import FileSystem
-from vminspect.utils import windows_path, posix_path, registry_path
+from vminspect.filesystem import FileSystem, posix_path
 
 
 VALUE_TYPES = {
@@ -167,3 +167,8 @@ def extract_registry(filesystem, hive):
         filesystem.download(posix_path(hive), tempfile.name)
 
         return RegistryHive(tempfile.name)
+
+
+def registry_path(*segments):
+    """Returns the Windows representation of the registry."""
+    return "%s" % ntpath.join(*segments)
