@@ -33,10 +33,13 @@
 
 import os
 import logging
+from itertools import chain
 from pebble import process, thread
+from tempfile import NamedTemporaryFile
 
 from vminspect.filesystem import FileSystem
-from vminspect.winreg import parse_registry, REGISTRY_PATH, USER_REGISTRY_PATH
+from vminspect.winreg import RegistryHive, registry_root
+from vminspect.winreg import user_registries_path, registries_path
 
 
 class DiskComparator:
@@ -342,7 +345,7 @@ def compare_hives(fs0, fs1):
     """
     registries = []
 
-    for path in REGISTRY_PATH + user_registries(fs0, fs1):
+    for path in chain(registries_path(fs0.fsroot), user_registries(fs0, fs1)):
         if fs0.checksum(path) != fs1.checksum(path):
             registries.append(path)
 
@@ -351,14 +354,10 @@ def compare_hives(fs0, fs1):
 
 def user_registries(fs0, fs1):
     """Returns the list of user registries present on both FileSystems."""
-    registries = []
-
-    for user in fs0.ls('C:\\Users'):
-        for path in (p.format(user) for p in USER_REGISTRY_PATH):
+    for user in fs0.ls('{}Users'.format(fs0.fsroot)):
+        for path in user_registries_path(fs0.fsroot, user):
             if fs1.exists(path):
-                registries.append(path)
-
-    return registries
+                yield path
 
 
 def files_type(fs0, fs1, files):
@@ -401,7 +400,13 @@ def parse_registries(filesystem, registries):
     results = {}
 
     for path in registries:
-        results.update(parse_registry(path, filesystem=filesystem))
+        with NamedTemporaryFile(buffering=0) as tempfile:
+            filesystem.download(path, tempfile.name)
+
+            registry = RegistryHive(tempfile.name)
+            registry.rootkey = registry_root(path)
+
+            results.update(dict(registry.keys()))
 
     return results
 

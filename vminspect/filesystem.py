@@ -58,14 +58,23 @@ class FileSystem:
         self.umount()
 
     @property
-    def guestfs(self):
-        """Returns the GuestFS handler."""
-        return self._handler
-
-    @property
     def osname(self):
         """Returns the Operating System name."""
         return self._handler.inspect_get_type(self._root)
+
+    @property
+    def fsroot(self):
+        """Returns the file system root."""
+        if self.osname == 'windows':
+            return '{}:\\'.format(
+                self._handler.inspect_get_drive_mappings(self._root)[0][0])
+        else:
+            return self._handler.inspect_get_mountpoints(self._root)[0][0]
+
+    @property
+    def guestfs(self):
+        """Returns the GuestFS handler."""
+        return self._handler
 
     def mount(self, readonly=True):
         """Mounts the given disk.

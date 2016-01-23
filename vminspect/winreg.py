@@ -31,7 +31,6 @@
 """Module for parsing Windows Registry hive files."""
 
 
-import os
 import ntpath
 import codecs
 from pebble import process
@@ -65,35 +64,16 @@ REGISTRY_TYPE = {'DEFAULT': 'HKU',
                  'SOFTWARE': 'HKLM'}
 
 
-REGISTRY_PATH = ['C:\\Windows\\System32\\config\\SAM',
-                 'C:\\Windows\\System32\\config\\SYSTEM',
-                 'C:\\Windows\\System32\\config\\DEFAULT',
-                 'C:\\Windows\\System32\\config\\SOFTWARE',
-                 'C:\\Windows\\System32\\config\\SECURITY']
+REGISTRY_PATH = ['{}Windows\\System32\\config\\SAM',
+                 '{}Windows\\System32\\config\\SYSTEM',
+                 '{}Windows\\System32\\config\\DEFAULT',
+                 '{}Windows\\System32\\config\\SOFTWARE',
+                 '{}Windows\\System32\\config\\SECURITY']
 
 
 USER_REGISTRY_PATH = [
-    'C:\\Users\\{}\\NTUSER.DAT',
-    'C:\\Users\\{}\\AppData\\Local\\Microsoft\\Windows\\UsrClass.dat']
-
-
-def parse_registry(hive, disk=None, filesystem=None):
-    """Parses the registry hive's content and returns a dictionary.
-
-        {"RootKey\\Key\\...": (("ValueKey", "ValueType", ValueValue), ... )}
-
-    """
-    if disk is not None:
-        with FileSystem(disk) as filesystem:
-            registry = extract_registry(filesystem, hive)
-    elif filesystem is not None:
-        registry = extract_registry(filesystem, hive)
-    else:
-        registry = RegistryHive(hive)
-
-    registry.rootkey = REGISTRY_TYPE.get(os.path.basename(posix_path(hive)), '')
-
-    return dict(registry.keys())
+    '{}Users\\{}\\NTUSER.DAT',
+    '{}Users\\{}\\AppData\\Local\\Microsoft\\Windows\\UsrClass.dat']
 
 
 class RegistryHive(Hivex):
@@ -107,7 +87,7 @@ class RegistryHive(Hivex):
     def __init__(self, filename, verbose=False, debug=False, write=False):
         super().__init__(filename, verbose=False, debug=False, write=False)
 
-        self._rootkey = REGISTRY_TYPE.get(os.path.basename(filename), '')
+        self._rootkey = registry_root(filename)
         self._types_map = {hive_types.REG_SZ: self.value_string,
                            hive_types.REG_EXPAND_SZ: self.value_string,
                            hive_types.REG_LINK: self.value_string,
@@ -138,7 +118,7 @@ class RegistryHive(Hivex):
             yield from self._visit_registry(node, self._rootkey)
 
     def _visit_registry(self, node, path):
-        path = registry_path(path, self.node_name(node))
+        path = ntpath.join(path, self.node_name(node))
         values = (self._parse_value(value) for value in self.node_values(node))
 
         yield path, tuple(values)
@@ -161,14 +141,24 @@ class RegistryHive(Hivex):
         return codecs.encode(self.value_value(value)[1], 'base64')
 
 
-def extract_registry(filesystem, hive):
-    """Extracts the registry hive from the given filesystem."""
-    with NamedTemporaryFile(buffering=0) as tempfile:
-        filesystem.download(posix_path(hive), tempfile.name)
-
-        return RegistryHive(tempfile.name)
+def registry_root(path):
+    """Guesses the registry root from the file name."""
+    return REGISTRY_TYPE.get(ntpath.basename(path), '')
 
 
-def registry_path(*segments):
-    """Returns the Windows representation of the registry."""
-    return "%s" % ntpath.join(*segments)
+def registries_path(fsroot):
+    """Iterates over the registry hives locations.
+
+    fsroot must contain the file system root, ex: C:\\
+
+    """
+    return (p.format(fsroot) for p in REGISTRY_PATH)
+
+
+def user_registries_path(fsroot, user):
+    """Iterates over the user registry hives locations.
+
+    fsroot must contain the file system root, ex: C:\\
+
+    """
+    return (p.format(fsroot, user) for p in USER_REGISTRY_PATH)

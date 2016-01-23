@@ -31,10 +31,11 @@
 import json
 import logging
 import argparse
+from tempfile import NamedTemporaryFile
 
 from vminspect.filesystem import FileSystem
-from vminspect.winreg import parse_registry
 from vminspect.comparator import DiskComparator
+from vminspect.winreg import RegistryHive, registry_root
 
 
 def main():
@@ -109,6 +110,30 @@ def compare_disks(disk1, disk2, identify=False, size=False, registry=False,
 
 def registry_command(arguments):
     return parse_registry(arguments.hive, disk=arguments.disk)
+
+
+def parse_registry(hive, disk=None):
+    """Parses the registry hive's content and returns a dictionary.
+
+        {"RootKey\\Key\\...": (("ValueKey", "ValueType", ValueValue), ... )}
+
+    """
+    if disk is not None:
+        with FileSystem(disk) as filesystem:
+            registry = extract_registry(filesystem, hive)
+    else:
+        registry = RegistryHive(hive)
+
+    registry.rootkey = registry_root(hive)
+
+    return dict(registry.keys())
+
+
+def extract_registry(filesystem, path):
+    with NamedTemporaryFile(buffering=0) as tempfile:
+        filesystem.download(path, tempfile.name)
+
+        return RegistryHive(tempfile.name)
 
 
 def parse_arguments():
