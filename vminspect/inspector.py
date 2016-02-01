@@ -32,7 +32,12 @@ import json
 import logging
 import argparse
 
+<<<<<<< HEAD
 from vminspect.filesystem import list_files
+=======
+from vminspect.vtscan import VTScanner
+from vminspect.filesystem import FileSystem
+>>>>>>> a046a19... added vtscan plugin
 from vminspect.comparator import DiskComparator
 
 
@@ -41,11 +46,19 @@ def main():
     arguments = parse_arguments()
 
     logging.basicConfig(level=arguments.debug and logging.DEBUG or logging.INFO)
+    logging.getLogger('requests').setLevel(logging.WARNING)
 
     if arguments.name == 'list':
         results = list_files_command(arguments)
     elif arguments.name == 'compare':
         results = compare_command(arguments)
+<<<<<<< HEAD
+=======
+    elif arguments.name == 'registry':
+        results = registry_command(arguments)
+    elif arguments.name == 'vtscan':
+        results = vtscan_command(arguments)
+>>>>>>> a046a19... added vtscan plugin
 
     print(json.dumps(results, indent=2))
 
@@ -62,6 +75,14 @@ def compare_command(arguments):
                                   path=arguments.path,
                                   identify=arguments.identify,
                                   size=arguments.size)
+
+
+def vtscan_command(arguments):
+    with VTScanner(arguments.disk, arguments.apikey) as vtscanner:
+        vtscanner.batchsize = arguments.batchsize
+        filetypes = arguments.types and arguments.types.split(',') or None
+
+        return [r._asdict() for r in vtscanner.scan(filetypes=filetypes)]
 
 
 def parse_arguments():
@@ -95,6 +116,16 @@ def parse_arguments():
                              default=False, help='report file types')
     list_parser.add_argument('-s', '--size', action='store_true',
                              default=False, help='report file sizes')
+
+    vtscan_parser = subparsers.add_parser(
+        'vtscan', help='Scans a disk and queries VirusTotal.')
+    vtscan_parser.add_argument('apikey', type=str, help='VirusTotal API key')
+    vtscan_parser.add_argument('disk', type=str, help='path to disk image')
+    vtscan_parser.add_argument('-b', '--batchsize', type=int, default=1,
+                               help='VT requests batch size')
+    vtscan_parser.add_argument(
+        '-t', '--types', type=str, default='',
+        help='comma separated list of file types (REGEX) to be scanned')
 
     return parser.parse_args()
 
