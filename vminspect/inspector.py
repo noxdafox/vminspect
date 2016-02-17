@@ -33,6 +33,7 @@ import logging
 import argparse
 from tempfile import NamedTemporaryFile
 
+from vminspect.usnjrnl import usn_journal
 from vminspect.filesystem import FileSystem
 from vminspect.comparator import DiskComparator
 from vminspect.winreg import RegistryHive, registry_root
@@ -50,6 +51,8 @@ def main():
         results = compare_command(arguments)
     elif arguments.name == 'registry':
         results = registry_command(arguments)
+    elif arguments.name == 'usnjrnl':
+        results = usnjrnl_command(arguments)
 
     print(json.dumps(results, indent=2))
 
@@ -136,6 +139,10 @@ def extract_registry(filesystem, path):
         return RegistryHive(tempfile.name)
 
 
+def usnjrnl_command(arguments):
+    return [e._asdict() for e in usn_journal(arguments.usnjrnl)]
+
+
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Inspects VM disk images.')
     parser.add_argument('-d', '--debug', action='store_true', default=False,
@@ -177,6 +184,11 @@ def parse_arguments():
     registry_parser.add_argument('hive', type=str, help='path to hive file')
     registry_parser.add_argument('-d', '--disk', type=str, default=None,
                                  help='path to disk image')
+
+    registry_parser = subparsers.add_parser(
+        'usnjrnl', help='Parses the Update Sequence Number Journal file.')
+    registry_parser.add_argument('usnjrnl', type=str, help='path to USN file')
+
 
     return parser.parse_args()
 
