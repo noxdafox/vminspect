@@ -143,7 +143,24 @@ def extract_registry(filesystem, path):
 
 
 def usnjrnl_command(arguments):
-    return [e._asdict() for e in usn_journal(arguments.usnjrnl)]
+    return parse_usnjrnl(arguments.usnjrnl, disk=arguments.disk)
+
+
+def parse_usnjrnl(usnjrnl, disk=None):
+    if disk is not None:
+        with FileSystem(disk) as filesystem:
+            return extract_usnjrnl(filesystem, usnjrnl)
+    else:
+        return [e._asdict() for e in usn_journal(usnjrnl)]
+
+
+def extract_usnjrnl(filesystem, path):
+    with NamedTemporaryFile(buffering=0) as tempfile:
+        root = filesystem.guestfs.inspect_get_roots()[0]
+        inode = filesystem.stat(path)['ino']
+        filesystem.guestfs.download_inode(root, inode, tempfile.name)
+
+        return [e._asdict() for e in usn_journal(tempfile.name)]
 
 
 def timeline_command(arguments):
@@ -218,6 +235,8 @@ def parse_arguments():
     usnjrnl_parser = subparsers.add_parser(
         'usnjrnl', help='Parses the Update Sequence Number Journal file.')
     usnjrnl_parser.add_argument('usnjrnl', type=str, help='path to USN file')
+    usnjrnl_parser.add_argument('-d', '--disk', type=str, default=None,
+                                help='path to disk image')
 
     timeline_parser = subparsers.add_parser(
         'timeline', help='Builds the event timeline of an NTFS disk.')

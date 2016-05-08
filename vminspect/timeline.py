@@ -85,7 +85,7 @@ class NTFSTimeline(FileSystem):
     def _read_journal(self):
         """Extracts the USN journal from the disk and parses its content."""
         root = self.guestfs.inspect_get_roots()[0]
-        inode = self.guestfs.stat('/$Extend/$UsnJrnl')['ino']
+        inode = self.stat('C:\\$Extend\\$UsnJrnl')['ino']
 
         with NamedTemporaryFile(buffering=0) as tempfile:
             self.guestfs.download_inode(root, inode, tempfile.name)
