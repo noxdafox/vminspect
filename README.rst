@@ -160,3 +160,46 @@ List the content of the SOFTWARE registry hive.
      ],
      ...
    }
+
+Extract event timelines of NTFS disks. Installation of 7Zip on Windows 7.
+
+::
+
+   python inspect.py timeline --identify --hash windows7.qcow2
+
+   {
+     "file_reference_number": 60228,
+     "path": "C:\\Program Files\\7-Zip\\7z.dll",
+     "size": 1592320,
+     "allocated": true,
+     "timestamp": "2016-05-07 07:42:49.518554",
+     "changes": [
+       "BASIC_INFO_CHANGE",
+       "DATA_EXTEND",
+       "FILE_CREATE",
+       "CLOSED"
+     ],
+     "attributes": [
+       "ARCHIVE"
+     ],
+     "type": "PE32+ executable (DLL) (GUI) x86-64, for MS Windows",
+     "hash": "d467f1f7a8407d1650060c8fe3dc6a0ccff4d409"
+   },
+   {
+     "file_reference_number": 60229,
+     "path": "C:\\Program Files\\7-Zip\\7z.exe",
+     "size": 447488,
+     "allocated": true,
+     "timestamp": "2016-05-07 07:42:49.518554",
+     "changes": [
+       "BASIC_INFO_CHANGE",
+       "DATA_EXTEND",
+       "FILE_CREATE",
+       "CLOSED"
+     ],
+     "attributes": [
+       "ARCHIVE"
+     ],
+     "type": "PE32+ executable (console) x86-64, for MS Windows",
+     "hash": "7447eb123655792fede586ad049ac737effa9e6c"
+   }
