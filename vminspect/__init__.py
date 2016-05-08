@@ -34,10 +34,12 @@ __all__ = ['FileSystem',
            'registries_path',
            'user_registries_path',
            'usn_journal',
-           'DiskComparator']
+           'DiskComparator',
+           'NTFSTimeline']
 
 
 from vminspect.usnjrnl import usn_journal
+from vminspect.timeline import NTFSTimeline
 from vminspect.filesystem import FileSystem
 from vminspect.comparator import DiskComparator
 from vminspect.winreg import RegistryHive, registry_root
