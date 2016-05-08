@@ -34,6 +34,7 @@ import argparse
 from tempfile import NamedTemporaryFile
 
 from vminspect.usnjrnl import usn_journal
+from vminspect.timeline import NTFSTimeline
 from vminspect.filesystem import FileSystem
 from vminspect.comparator import DiskComparator
 from vminspect.winreg import RegistryHive, registry_root
@@ -53,6 +54,8 @@ def main():
         results = registry_command(arguments)
     elif arguments.name == 'usnjrnl':
         results = usnjrnl_command(arguments)
+    elif arguments.name == 'timeline':
+        results = timeline_command(arguments)
 
     print(json.dumps(results, indent=2))
 
@@ -143,6 +146,33 @@ def usnjrnl_command(arguments):
     return [e._asdict() for e in usn_journal(arguments.usnjrnl)]
 
 
+def timeline_command(arguments):
+    logger = logging.getLogger('timeline')
+
+    with NTFSTimeline(arguments.disk) as timeline:
+        events = [e._asdict() for e in timeline.timeline()]
+
+        if arguments.identify:
+            logger.debug("Gatering file types.")
+            for event in events:
+                if event['allocated']:
+                    try:
+                        event['type'] = timeline.file(event['path'])
+                    except RuntimeError:
+                        pass
+
+        if arguments.hash:
+            logger.debug("Gatering files hash.")
+            for event in events:
+                if event['allocated']:
+                    try:
+                        event['hash'] = timeline.checksum(event['path'])
+                    except RuntimeError:
+                        pass
+
+    return events
+
+
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Inspects VM disk images.')
     parser.add_argument('-d', '--debug', action='store_true', default=False,
@@ -185,10 +215,17 @@ def parse_arguments():
     registry_parser.add_argument('-d', '--disk', type=str, default=None,
                                  help='path to disk image')
 
-    registry_parser = subparsers.add_parser(
+    usnjrnl_parser = subparsers.add_parser(
         'usnjrnl', help='Parses the Update Sequence Number Journal file.')
-    registry_parser.add_argument('usnjrnl', type=str, help='path to USN file')
+    usnjrnl_parser.add_argument('usnjrnl', type=str, help='path to USN file')
 
+    timeline_parser = subparsers.add_parser(
+        'timeline', help='Builds the event timeline of an NTFS disk.')
+    timeline_parser.add_argument('disk', type=str, help='path to disk image')
+    timeline_parser.add_argument('-i', '--identify', action='store_true',
+                                 default=False, help='report file types')
+    timeline_parser.add_argument('-s', '--hash', action='store_true',
+                                 default=False, help='report file hash (SHA1)')
 
     return parser.parse_args()
 

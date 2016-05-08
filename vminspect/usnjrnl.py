@@ -180,7 +180,7 @@ def usn_v3_record(header, fields, record):
 def unpack_flags(value, flags):
     """Multiple flags might be packed in the same field."""
     try:
-        return flags[value]
+        return [flags[value]]
     except KeyError:
         return [flags[k] for k in sorted(flags.keys()) if k & value > 0]
 
