@@ -186,7 +186,10 @@ def unpack_flags(value, flags):
 
 
 def remove_zeroes(journal):
-    offset = re.search(b'[^\x00]', journal).start()
-    offset -= (offset % 8)
+    try:
+        offset = re.search(b'[^\x00]', journal).start()
+        offset -= (offset % 8)
+    except AttributeError:  # EOF reached
+        return b''
 
     return journal[offset:]
