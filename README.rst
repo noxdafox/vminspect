@@ -35,7 +35,7 @@ List all the files contained within a disk image.
 
 ::
 
-    python inspect.py list ubuntu.raw --identify --size
+    vminspect list ubuntu.raw --identify --size
 
     [
       {
@@ -57,7 +57,7 @@ Compare two disk images. Installation of lynx browser on Ubuntu.
 
 ::
 
-   python inspect.py compare --identify ubuntu.qcow2 ubuntu_lynx.qcow2
+   vminspect compare --identify ubuntu.qcow2 ubuntu_lynx.qcow2
 
    {
      "created_files": [
@@ -89,7 +89,7 @@ On the Windows Registry is visible how the malware ensures its execution at mach
 
 ::
 
-   python inspect.py compare --identify --registry windows7.qcow2 windows7zeroaccess.qcow2
+   vminspect compare --identify --registry windows7.qcow2 windows7zeroaccess.qcow2
 
    {
      "created_files": [
@@ -142,7 +142,7 @@ List the content of the SOFTWARE registry hive.
 
 ::
 
-   python inspect.py registry --disk windows7.qcow2 C:\\Windows\\System32\\config\\SOFTWARE
+   vminspect registry --disk windows7.qcow2 C:\\Windows\\System32\\config\\SOFTWARE
 
    {
      "HKLM\\Microsoft\\Windows Defender\\Signature Updates": [
@@ -165,7 +165,7 @@ Extract event timelines of NTFS disks. Installation of 7Zip on Windows 7.
 
 ::
 
-   python inspect.py timeline --identify --hash windows7.qcow2
+   vminspect timeline --identify --hash windows7.qcow2
 
    {
      "file_reference_number": 60228,
