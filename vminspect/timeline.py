@@ -122,10 +122,8 @@ def parse_journal(journal):
 
 def journal_event(events):
     """Group multiple events into a single one."""
-    str_to_list = lambda x: isinstance(x, str) and [x] or x
-    reasons = set(chain.from_iterable(str_to_list(e.reasons) for e in events))
-    attributes = set(chain.from_iterable(str_to_list(e.file_attributes)
-                                         for e in events))
+    reasons = set(chain.from_iterable(e.reasons for e in events))
+    attributes = set(chain.from_iterable(e.file_attributes for e in events))
 
     return JrnlEvent(events[0].file_reference_number,
                      events[0].file_name,
