@@ -40,6 +40,15 @@ from vminspect.comparator import DiskComparator
 from vminspect.winreg import RegistryHive, registry_root
 
 
+MISSING_GUESTFS_FEATURE = """
+This feature requires a special build of Libguestfs.
+
+Source code is available at:
+
+https://github.com/noxdafox/libguestfs/tree/forensics
+"""
+
+
 def main():
     results = {}
     arguments = parse_arguments()
@@ -149,7 +158,10 @@ def usnjrnl_command(arguments):
 def parse_usnjrnl(usnjrnl, disk=None):
     if disk is not None:
         with FileSystem(disk) as filesystem:
-            return extract_usnjrnl(filesystem, usnjrnl)
+            try:
+                return extract_usnjrnl(filesystem, usnjrnl)
+            except AttributeError:
+                raise RuntimeError(MISSING_GUESTFS_FEATURE)
     else:
         return [e._asdict() for e in usn_journal(usnjrnl)]
 
@@ -167,7 +179,10 @@ def timeline_command(arguments):
     logger = logging.getLogger('timeline')
 
     with NTFSTimeline(arguments.disk) as timeline:
-        events = [e._asdict() for e in timeline.timeline()]
+        try:
+            events = [e._asdict() for e in timeline.timeline()]
+        except AttributeError:
+            raise RuntimeError(MISSING_GUESTFS_FEATURE)
 
         if arguments.identify:
             logger.debug("Gatering file types.")
