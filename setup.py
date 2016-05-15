@@ -37,7 +37,7 @@ def read(fname):
 
 setup(
     name="vminspect",
-    version="0.0.2",
+    version="0.0.3",
     author="Matteo Cafasso",
     author_email="noxdafox@gmail.com",
     description=("Virtual Machine disk inspection library"),
@@ -45,7 +45,8 @@ setup(
     license="BSD",
     packages=find_packages(),
     install_requires=[
-        'pebble'
+        'pebble',
+        'requests'
     ],
     entry_points = {
         'console_scripts': [
