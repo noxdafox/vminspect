@@ -58,11 +58,7 @@ class VTScanner:
 
         VTReport(path        -> C:\\Windows\\System32\\infected.dll
                  hash        -> ab231...
-<<<<<<< HEAD
-                 detections) -> list of engines detecting the file
-=======
                  detections) -> dictionary engine -> detection
->>>>>>> 766023e... Improvements in VTScan plugin
 
         Files unknown by VirusTotal will contain the string 'unknown'
         in the detection field.
@@ -72,11 +68,8 @@ class VTScanner:
         checksums = self.filetype_filter(self._filesystem.checksums('/'),
                                          filetypes=filetypes)
 
-<<<<<<< HEAD
-=======
         self.logger.debug("Querying %d objects to VTotal.", len(checksums))
 
->>>>>>> 766023e... Improvements in VTScan plugin
         for files in chunks(checksums, size=self.batchsize):
             files = dict((reversed(e) for e in files))
             response = vtquery(self._apikey, files.keys())
@@ -104,15 +97,6 @@ class VTScanner:
         if result['response_code'] > 0:
             positives = result['positives']
 
-<<<<<<< HEAD
-                if result['positives'] > 0:
-                    yield VTReport(path, sha1, [s for s in result['scans']
-                                                if s['detected']])
-            else:
-                self.logger.debug("%s - Unknown file.", path)
-
-                yield VTReport(path, sha1, 'unknown')
-=======
             self.logger.debug("%s - %d positives.", path, positives)
 
             if positives > 0:
@@ -125,7 +109,6 @@ class VTScanner:
             self.logger.debug("%s - Unknown file.", path)
 
             yield VTReport(path, sha1, 'UNKNOWN')
->>>>>>> 766023e... Improvements in VTScan plugin
 
 
 def vtquery(apikey, checksums):

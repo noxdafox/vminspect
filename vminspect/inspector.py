@@ -33,10 +33,10 @@ import logging
 import argparse
 from tempfile import NamedTemporaryFile
 
-from vminspect.vtscan import VTScanner
-from vminspect.usnjrnl import usn_journal
 from vminspect.filesystem import list_files
-from vminspect.filesystem import FileSystem
+from vminspect.vtscan import VTScanner
+from vminspect.winreg import registry
+from vminspect.usnjrnl import usn_journal
 from vminspect.timeline import NTFSTimeline
 from vminspect.filesystem import FileSystem
 from vminspect.comparator import DiskComparator
@@ -67,8 +67,6 @@ def main():
         results = registry_command(arguments)
     elif arguments.name == 'vtscan':
         results = vtscan_command(arguments)
-    elif arguments.name == 'registry':
-        results = registry_command(arguments)
     elif arguments.name == 'usnjrnl':
         results = usnjrnl_command(arguments)
     elif arguments.name == 'timeline':
@@ -134,7 +132,6 @@ def compare_disks(disk1, disk2, identify=False, size=False, registry=False,
 def registry_command(arguments):
     return parse_registry(arguments.hive, disk=arguments.disk)
 
-
 def parse_registry(hive, disk=None):
     """Parses the registry hive's content and returns a dictionary.
 
@@ -158,6 +155,13 @@ def extract_registry(filesystem, path):
 
         return RegistryHive(tempfile.name)
 
+
+def vtscan_command(arguments):
+    with VTScanner(arguments.disk, arguments.apikey) as vtscanner:
+        vtscanner.batchsize = arguments.batchsize
+        filetypes = arguments.types and arguments.types.split(',') or None
+
+        return [r._asdict() for r in vtscanner.scan(filetypes=filetypes)]
 
 def usnjrnl_command(arguments):
     return parse_usnjrnl(arguments.usnjrnl, disk=arguments.disk)
@@ -213,14 +217,6 @@ def timeline_command(arguments):
     return events
 
 
-def vtscan_command(arguments):
-    with VTScanner(arguments.disk, arguments.apikey) as vtscanner:
-        vtscanner.batchsize = arguments.batchsize
-        filetypes = arguments.types and arguments.types.split(',') or None
-
-        return [r._asdict() for r in vtscanner.scan(filetypes=filetypes)]
-
-
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Inspects VM disk images.')
     parser.add_argument('-d', '--debug', action='store_true', default=False,
@@ -238,8 +234,7 @@ def parse_arguments():
                              default=False, help='report file sizes')
 
     compare_parser = subparsers.add_parser('compare',
-                                        help='Compares two disks.')
-
+                                           help='Compares two disks.')
     compare_parser.add_argument('disk1', type=str,
                                 help='path to first disk image')
     compare_parser.add_argument('disk2', type=str,
@@ -263,6 +258,16 @@ def parse_arguments():
     registry_parser.add_argument('-d', '--disk', type=str, default=None,
                                  help='path to disk image')
 
+    vtscan_parser = subparsers.add_parser(
+        'vtscan', help='Scans a disk and queries VirusTotal.')
+    vtscan_parser.add_argument('apikey', type=str, help='VirusTotal API key')
+    vtscan_parser.add_argument('disk', type=str, help='path to disk image')
+    vtscan_parser.add_argument('-b', '--batchsize', type=int, default=1,
+                               help='VT requests batch size')
+    vtscan_parser.add_argument(
+        '-t', '--types', type=str, default='',
+        help='comma separated list of file types (REGEX) to be scanned')
+
     usnjrnl_parser = subparsers.add_parser(
         'usnjrnl', help='Parses the Update Sequence Number Journal file.')
     usnjrnl_parser.add_argument('usnjrnl', type=str, help='path to USN file')
@@ -276,16 +281,6 @@ def parse_arguments():
                                  default=False, help='report file types')
     timeline_parser.add_argument('-s', '--hash', action='store_true',
                                  default=False, help='report file hash (SHA1)')
-
-    vtscan_parser = subparsers.add_parser(
-        'vtscan', help='Scans a disk and queries VirusTotal.')
-    vtscan_parser.add_argument('apikey', type=str, help='VirusTotal API key')
-    vtscan_parser.add_argument('disk', type=str, help='path to disk image')
-    vtscan_parser.add_argument('-b', '--batchsize', type=int, default=1,
-                               help='VT requests batch size')
-    vtscan_parser.add_argument(
-        '-t', '--types', type=str, default='',
-        help='comma separated list of file types (REGEX) to be scanned')
 
     return parser.parse_args()
 
