@@ -27,6 +27,8 @@ hivex: http://libguestfs.org/hivex.3.html
 
 Pebble: https://pypi.python.org/pypi/Pebble
 
+Requests: https://pypi.python.org/pypi/requests/
+
 
 Examples
 --------
@@ -137,6 +139,32 @@ On the Windows Registry is visible how the malware ensures its execution at mach
        ...
      }
    }
+
+Query Virustotal regarding the content of a disk.
+
+::
+
+   vminspect vtscan <VT API key> --type "EICAR.*" ubuntu.qcow2
+
+   [
+     {
+       "name": "/home/user/eicar.txt",
+       "hash": "cf8bd9dfddff007f75adf4c2be48005cea317c62",
+       "detections": {
+         "Tencent": {
+           "version": "1.0.0.1",
+           "detected": true,
+           "update": "20160515",
+           "result": "EICAR.TEST.NOT-A-VIRUS"
+         },
+         "Symantec": {
+           "version": "20151.1.0.32",
+           "detected": true,
+           "update": "20160515",
+           "result": "EICAR Test String"
+         },
+       }
+   ...
 
 List the content of the SOFTWARE registry hive.
 
