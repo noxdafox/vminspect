@@ -120,3 +120,29 @@ Highlighted the executable dropping location and two libraries (32 and 64 bit ve
      ]
      ...
    }
+
+Query Virustotal regarding the content of a disk.
+
+::
+
+   vminspect vtscan <VT API key> --type "EICAR.*" ubuntu.qcow2
+
+   [
+     {
+       "name": "/home/user/eicar.txt",
+       "hash": "cf8bd9dfddff007f75adf4c2be48005cea317c62",
+       "detections": {
+         "Tencent": {
+           "version": "1.0.0.1",
+           "detected": true,
+           "update": "20160515",
+           "result": "EICAR.TEST.NOT-A-VIRUS"
+         },
+         "Symantec": {
+           "version": "20151.1.0.32",
+           "detected": true,
+           "update": "20160515",
+           "result": "EICAR Test String"
+         },
+       }
+   ...
