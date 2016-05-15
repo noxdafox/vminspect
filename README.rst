@@ -12,7 +12,7 @@ Even though all the precautions have been taken, if misused this library can cau
 
 The author is not responsible for any damage or data loss deriving from the usage of this tool.
 
-Analysing disk images may take several minutes and lots of resources from the computer.
+Analysing disk images may take several minutes and quite many of resources from the computer.
 
 The availability of hardware acceleration (KVM) as well as the use of concurrency speed up the process quite sensitively.
 
@@ -22,6 +22,8 @@ Dependencies
 Python 3: https://www.python.org/
 
 libguestfs: http://libguestfs.org/
+
+hivex: http://libguestfs.org/hivex.3.html
 
 Pebble: https://pypi.python.org/pypi/Pebble
 
@@ -33,7 +35,7 @@ List all the files contained within a disk image.
 
 ::
 
-    python inspect.py list ubuntu.raw --identify --size
+    vminspect list ubuntu.raw --identify --size
 
     [
       {
@@ -55,7 +57,7 @@ Compare two disk images. Installation of lynx browser on Ubuntu.
 
 ::
 
-   python inspect.py compare --identify ubuntu.qcow2 ubuntu_lynx.qcow2
+   vminspect compare --identify ubuntu.qcow2 ubuntu_lynx.qcow2
 
    {
      "created_files": [
@@ -80,11 +82,14 @@ Compare two disk images. Installation of lynx browser on Ubuntu.
    }
 
 Compare two disk images. ZeroAccess malware on Windows 7.
+
 Highlighted the executable dropping location and two libraries (32 and 64 bit versions) disguised as Desktop.ini files as well as the deletion of Windows Defender related files.
+
+On the Windows Registry is visible how the malware ensures its execution at machine's startup.
 
 ::
 
-   python inspect.py compare --identify windows7.qcow2 windows7zeroaccess.qcow2
+   vminspect compare --identify --registry windows7.qcow2 windows7zeroaccess.qcow2
 
    {
      "created_files": [
@@ -117,8 +122,86 @@ Highlighted the executable dropping location and two libraries (32 and 64 bit ve
          "type": "PE32+ executable (DLL) (GUI) x86-64",
        },
        ...
-     ]
+     ],
      ...
+     "registry": {
+       "created_keys": {
+         "\\HKLM\\ControlSet001\\services\\\u202eetadpug": [
+           ["ImagePath", "REG_SZ", "C:\\Program Files (x86)\\Google\\Desktop\\Install\\ ... \\GoogleUpdate.exe"],
+           ["DisplayName", "REG_SZ", "Google Update Service (gupdate)"],
+           ["Start", "REG_DWORD", "2"],
+           ...
+         ],
+         ...
+       },
+       ...
+     }
+   }
+
+List the content of the SOFTWARE registry hive.
+
+::
+
+   vminspect registry --disk windows7.qcow2 C:\\Windows\\System32\\config\\SOFTWARE
+
+   {
+     "HKLM\\Microsoft\\Windows Defender\\Signature Updates": [
+       [
+         "EngineVersion",
+         "REG_SZ",
+         "1.1.6402.0"
+       ],
+       [
+         "ASSignatureVersion",
+         "REG_SZ",
+         "1.95.191.0"
+       ],
+       ...
+     ],
+     ...
+   }
+
+Extract event timelines of NTFS disks. Installation of 7Zip on Windows 7.
+
+::
+
+   vminspect timeline --identify --hash windows7.qcow2
+
+   {
+     "file_reference_number": 60228,
+     "path": "C:\\Program Files\\7-Zip\\7z.dll",
+     "size": 1592320,
+     "allocated": true,
+     "timestamp": "2016-05-07 07:42:49.518554",
+     "changes": [
+       "BASIC_INFO_CHANGE",
+       "DATA_EXTEND",
+       "FILE_CREATE",
+       "CLOSED"
+     ],
+     "attributes": [
+       "ARCHIVE"
+     ],
+     "type": "PE32+ executable (DLL) (GUI) x86-64, for MS Windows",
+     "hash": "d467f1f7a8407d1650060c8fe3dc6a0ccff4d409"
+   },
+   {
+     "file_reference_number": 60229,
+     "path": "C:\\Program Files\\7-Zip\\7z.exe",
+     "size": 447488,
+     "allocated": true,
+     "timestamp": "2016-05-07 07:42:49.518554",
+     "changes": [
+       "BASIC_INFO_CHANGE",
+       "DATA_EXTEND",
+       "FILE_CREATE",
+       "CLOSED"
+     ],
+     "attributes": [
+       "ARCHIVE"
+     ],
+     "type": "PE32+ executable (console) x86-64, for MS Windows",
+     "hash": "7447eb123655792fede586ad049ac737effa9e6c"
    }
 
 Query Virustotal regarding the content of a disk.

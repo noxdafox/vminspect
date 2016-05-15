@@ -27,50 +27,38 @@
 # OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
 # EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-
 import os
-import subprocess
+from setuptools import setup, find_packages
 
 
-def windows_path(path):
-    """Returns the Windows representation of the path."""
-    return "C:%s" % path.replace('/', '\\')
+def read(fname):
+    return open(os.path.join(os.path.dirname(__file__), fname)).read()
 
 
-def unix_path(path):
-    """Returns the Linux representation of the path."""
-    return path.lstrip('C:').replace('\\', '/')
-
-
-def makedirs(path):
-    """Creates the directory tree if non existing."""
-    if not os.path.exists(path):
-        os.makedirs(path)
-
-
-def launch_process(*args):
-    return subprocess.Popen(args,
-                            stdout=subprocess.PIPE,
-                            stderr=subprocess.STDOUT)
-
-
-def process_output(process, filename=None):
-    """Waits for process output and returns it.
-
-    If filename is not None, writes the process' output into the file.
-
-    Raises RuntimeError if process exit code is not zero.
-
-    """
-    output = process.communicate()[0].decode('utf8')
-
-    if process.returncode == 0:
-        if filename is not None:
-            with open(filename, 'w') as result_file:
-                result_file.write(output)
-    else:
-        raise RuntimeError(
-            "%s exit code %d, output:\n%s"
-            % (' '.join(process.args), process.returncode, output))
-
-    return output
+setup(
+    name="vminspect",
+    version="0.0.2",
+    author="Matteo Cafasso",
+    author_email="noxdafox@gmail.com",
+    description=("Virtual Machine disk inspection library"),
+    long_description=read('README.rst'),
+    license="BSD",
+    packages=find_packages(),
+    install_requires=[
+        'pebble'
+    ],
+    entry_points = {
+        'console_scripts': [
+            'vminspect = vminspect.inspector:main',
+        ]
+    },
+    keywords="virtualisation inspection disk analysis",
+    url="https://github.com/noxdafox/vminspect",
+    classifiers=[
+        "Programming Language :: Python :: 3",
+        "Development Status :: 3 - Alpha",
+        "Intended Audience :: Developers",
+        "License :: OSI Approved :: BSD License",
+        "Topic :: Software Development :: Libraries :: Python Modules"
+    ]
+)

@@ -28,126 +28,166 @@
 # EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-import logging
+"""GuestFS wrapper to facilitate File System analysis."""
+
+import os
+import re
 from guestfs import GuestFS
 from tempfile import NamedTemporaryFile
 
-from vminspect.utils import windows_path, unix_path
 
+class FileSystem:
+    """Convenience wrapper over GuestFS instance.
 
-def list_files(disk, identify=False, size=False):
-    results = []
-    logger = logging.getLogger('filesystem')
+    Simplifies some common routines.
 
-    with FileSystem(disk) as filesystem:
-        logger.debug("Listing files.")
-        for path, digest in filesystem.list_files().items():
-            results.append({'path': path, 'sha1': digest})
+    Automatically translates paths according to the contained File System.
 
-        if identify:
-            logger.debug("Gatering file types.")
-            results = add_file_type(filesystem, results)
-        if size:
-            logger.debug("Gatering file sizes.")
-            results = add_file_size(filesystem, results)
-
-    return results
-
-
-class FileSystem(GuestFS):
-    """Guest FileSystem handler."""
+    """
     def __init__(self, disk_path):
-        super().__init__()
         self._root = None
-        self._os_type = None
+        self._handler = GuestFS()
         self._disk_path = disk_path
 
     def __enter__(self):
-        self.mount_disk()
+        self.mount()
 
         return self
 
     def __exit__(self, *_):
-        self.umount_disk()
+        self.umount()
 
     @property
-    def os_type(self):
-        """Returns the Operating System type contained in the disk."""
-        if self._os_type is None:
-            self._os_type = self.inspect_get_type(self._root)
+    def osname(self):
+        """Returns the Operating System name."""
+        return self._handler.inspect_get_type(self._root)
 
-        return self._os_type
+    @property
+    def fsroot(self):
+        """Returns the file system root."""
+        if self.osname == 'windows':
+            return '{}:\\'.format(
+                self._handler.inspect_get_drive_mappings(self._root)[0][0])
+        else:
+            return self._handler.inspect_get_mountpoints(self._root)[0][0]
 
-    def mount_disk(self, readonly=True):
+    @property
+    def guestfs(self):
+        """Returns the GuestFS handler."""
+        return self._handler
+
+    def mount(self, readonly=True):
         """Mounts the given disk.
         It must be called before any other method.
 
         """
-        self.add_drive_opts(self._disk_path, readonly=True)
-        self.launch()
+        self._handler.add_drive_opts(self._disk_path, readonly=True)
+        self._handler.launch()
 
         for mountpoint, device in self._inspect_disk():
             if readonly:
-                self.mount_ro(device, mountpoint)
+                self._handler.mount_ro(device, mountpoint)
             else:
-                self.mount(device, mountpoint)
+                self._handler.mount(device, mountpoint)
+
+        if self._handler.inspect_get_type(self._root) == 'windows':
+            self.path = self._windows_path
+        else:
+            self.path = posix_path
 
     def _inspect_disk(self):
         """Inspects the disk and returns the mountpoints mapping
         as a list which order is the supposed one for correct mounting.
 
         """
-        roots = self.inspect_os()
+        roots = self._handler.inspect_os()
 
         if roots:
             self._root = roots[0]
-            return sorted(self.inspect_get_mountpoints(self._root),
+            return sorted(self._handler.inspect_get_mountpoints(self._root),
                           key=lambda m: len(m[0]))
         else:
             raise RuntimeError("No OS found on the given disk image.")
 
-    def list_files(self):
-        """Lists the files contained within the disk.
-
-        Returns a dictionary:
-
-            {"C:\\Windows\\System32\\NTUSER.DAT": "sha1_hash"} for windows
-            {"/home/user/text.txt": "sha1_hash"} for other FS.
-
-        """
-        with NamedTemporaryFile(buffering=0) as tempfile:
-            self.checksums_out('sha1', '/', tempfile.name)
-
-            if self.os_type == 'windows':
-                return {windows_path(f[1].lstrip('.')): f[0] for f in
-                        (l.decode('utf8').strip().split(None, 1)
-                         for l in tempfile)}
-            else:
-                return {f[1].lstrip('.'): f[0] for f in
-                        (l.decode('utf8').strip().split(None, 1)
-                         for l in tempfile)}
-
-    def umount_disk(self):
+    def umount(self):
         """Unmounts the disk.
 
         After this method is called no further action is allowed.
 
         """
-        self.close()
+        self._handler.close()
+
+    def download(self, source, destination):
+        """Downloads the file on the disk at source into destination."""
+        self._handler.download(posix_path(source), destination)
+
+    def ls(self, path):
+        """Lists the content at the given path."""
+        return self._handler.ls(posix_path(path))
+
+    def nodes(self, path):
+        """Iterates over the files and directories contained within the disk
+        starting from the given path.
+
+        Yields the path of the nodes.
+
+        """
+        path = posix_path(path)
+
+        yield from (self.path(path, e) for e in self._handler.find(path))
+
+    def checksum(self, path, hashtype='sha1'):
+        """Returns the checksum of the given path."""
+        return self._handler.checksum(hashtype, posix_path(path))
+
+    def checksums(self, path, hashtype='sha1'):
+        """Iterates over the files hashes contained within the disk
+        starting from the given path.
+
+        The hashtype keyword allows to choose the file hashing algorithm.
+
+        Yields the following values:
+
+            "C:\\Windows\\System32\\NTUSER.DAT", "hash" for windows
+            "/home/user/text.txt", "hash" for other FS
+
+        """
+        with NamedTemporaryFile(buffering=0) as tempfile:
+            self._handler.checksums_out(hashtype, posix_path(path),
+                                        tempfile.name)
+
+            yield from ((self.path(f[1].lstrip('.')), f[0])
+                        for f in (l.decode('utf8').strip().split(None, 1)
+                                  for l in tempfile))
+
+    def stat(self, path):
+        """Retrieves the status of the node at the given path.
+
+        Returns a dictionary.
+
+        """
+        return self._handler.stat(posix_path(path))
+
+    def file(self, path):
+        """Analogous to Unix file command.
+        Returns the type of node at the given path.
+
+        """
+        return self._handler.file(posix_path(path))
+
+    def exists(self, path):
+        """Returns whether the path exists."""
+        return self._handler.exists(posix_path(path))
+
+    def path(self, *segments):
+        """Normalizes the path returned by guestfs in the File System format."""
+        raise NotImplementedError("FileSystem needs to be mounted first")
+
+    def _windows_path(self, *segments):
+        drive = self._handler.inspect_get_drive_mappings(self._root)[0][0]
+
+        return "%s:%s" % (drive, os.path.join(*segments).replace('/', '\\'))
 
 
-def add_file_type(filesystem, files):
-    """Inspects the file type of the given files."""
-    for file_meta in files:
-        file_meta['type'] = filesystem.file(unix_path(file_meta['path']))
-
-    return files
-
-
-def add_file_size(filesystem, files):
-    """Gets the file size of the given files."""
-    for file_meta in files:
-        file_meta['size'] = filesystem.stat(
-            unix_path(file_meta['path']))['size']
-
-    return files
+def posix_path(*segments):
+    return re.sub('^[a-zA-Z]:', '', os.path.join(*segments)).replace('\\', '/')

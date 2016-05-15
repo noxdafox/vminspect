@@ -31,14 +31,25 @@
 import json
 import logging
 import argparse
+from tempfile import NamedTemporaryFile
 
-<<<<<<< HEAD
-from vminspect.filesystem import list_files
-=======
 from vminspect.vtscan import VTScanner
+from vminspect.usnjrnl import usn_journal
+from vminspect.filesystem import list_files
 from vminspect.filesystem import FileSystem
->>>>>>> a046a19... added vtscan plugin
+from vminspect.timeline import NTFSTimeline
+from vminspect.filesystem import FileSystem
 from vminspect.comparator import DiskComparator
+from vminspect.winreg import RegistryHive, registry_root
+
+
+MISSING_GUESTFS_FEATURE = """
+This feature requires a special build of Libguestfs.
+
+Source code is available at:
+
+https://github.com/noxdafox/libguestfs/tree/forensics
+"""
 
 
 def main():
@@ -52,13 +63,16 @@ def main():
         results = list_files_command(arguments)
     elif arguments.name == 'compare':
         results = compare_command(arguments)
-<<<<<<< HEAD
-=======
     elif arguments.name == 'registry':
         results = registry_command(arguments)
     elif arguments.name == 'vtscan':
         results = vtscan_command(arguments)
->>>>>>> a046a19... added vtscan plugin
+    elif arguments.name == 'registry':
+        results = registry_command(arguments)
+    elif arguments.name == 'usnjrnl':
+        results = usnjrnl_command(arguments)
+    elif arguments.name == 'timeline':
+        results = timeline_command(arguments)
 
     print(json.dumps(results, indent=2))
 
@@ -68,13 +82,135 @@ def list_files_command(arguments):
                       size=arguments.size)
 
 
+def list_files(disk, identify=False, size=False):
+    logger = logging.getLogger('filesystem')
+
+    with FileSystem(disk) as filesystem:
+        logger.debug("Listing files.")
+        files = [{'path': path, 'sha1': digest}
+                 for path, digest in filesystem.checksums('/')]
+
+        if identify:
+            logger.debug("Gatering file types.")
+            for file_meta in files:
+                file_meta['type'] = filesystem.file(file_meta['path'])
+
+        if size:
+            logger.debug("Gatering file sizes.")
+            for file_meta in files:
+                file_meta['size'] = filesystem.stat(file_meta['path'])['size']
+
+    return files
+
+
 def compare_command(arguments):
-    with DiskComparator(arguments.disk1, arguments.disk2) as comparator:
-        return comparator.compare(extract=arguments.extract,
-                                  concurrent=arguments.concurrent,
-                                  path=arguments.path,
-                                  identify=arguments.identify,
-                                  size=arguments.size)
+    return compare_disks(arguments.disk1, arguments.disk2,
+                         identify=arguments.identify, size=arguments.size,
+                         extract=arguments.extract, path=arguments.path,
+                         registry=arguments.registry,
+                         concurrent=arguments.concurrent)
+
+
+def compare_disks(disk1, disk2, identify=False, size=False, registry=False,
+                  extract=False, path='.', concurrent=False):
+    with DiskComparator(disk1, disk2) as comparator:
+        results = comparator.compare(concurrent=concurrent,
+                                     identify=identify,
+                                     size=size)
+        if extract:
+            extract = results['created_files'] + results['modified_files']
+            files = comparator.extract(1, extract, path=path)
+
+            results.update(files)
+
+        if registry:
+            registry = comparator.compare_registry(concurrent=concurrent)
+
+            results['registry'] = registry
+
+    return results
+
+
+def registry_command(arguments):
+    return parse_registry(arguments.hive, disk=arguments.disk)
+
+
+def parse_registry(hive, disk=None):
+    """Parses the registry hive's content and returns a dictionary.
+
+        {"RootKey\\Key\\...": (("ValueKey", "ValueType", ValueValue), ... )}
+
+    """
+    if disk is not None:
+        with FileSystem(disk) as filesystem:
+            registry = extract_registry(filesystem, hive)
+    else:
+        registry = RegistryHive(hive)
+
+    registry.rootkey = registry_root(hive)
+
+    return dict(registry.keys())
+
+
+def extract_registry(filesystem, path):
+    with NamedTemporaryFile(buffering=0) as tempfile:
+        filesystem.download(path, tempfile.name)
+
+        return RegistryHive(tempfile.name)
+
+
+def usnjrnl_command(arguments):
+    return parse_usnjrnl(arguments.usnjrnl, disk=arguments.disk)
+
+
+def parse_usnjrnl(usnjrnl, disk=None):
+    if disk is not None:
+        with FileSystem(disk) as filesystem:
+            try:
+                return extract_usnjrnl(filesystem, usnjrnl)
+            except AttributeError:
+                raise RuntimeError(MISSING_GUESTFS_FEATURE)
+    else:
+        return [e._asdict() for e in usn_journal(usnjrnl)]
+
+
+def extract_usnjrnl(filesystem, path):
+    with NamedTemporaryFile(buffering=0) as tempfile:
+        root = filesystem.guestfs.inspect_get_roots()[0]
+        inode = filesystem.stat(path)['ino']
+        filesystem.guestfs.download_inode(root, inode, tempfile.name)
+
+        return [e._asdict() for e in usn_journal(tempfile.name)]
+
+
+def timeline_command(arguments):
+    logger = logging.getLogger('timeline')
+
+    with NTFSTimeline(arguments.disk) as timeline:
+        try:
+            events = [e._asdict() for e in timeline.timeline()]
+        except AttributeError:
+            raise RuntimeError(MISSING_GUESTFS_FEATURE)
+
+        if arguments.identify:
+            logger.debug("Gatering file types.")
+            for event in events:
+                if event['allocated']:
+                    try:
+                        event['type'] = timeline.file(event['path'])
+                    except RuntimeError:
+                        pass
+
+        if arguments.hash:
+            logger.debug("Gatering files hash.")
+            for event in events:
+                if event['allocated']:
+                    try:
+                        event['hash'] = timeline.checksum(event['path'])
+                    except RuntimeError:
+                        pass
+
+    return events
 
 
 def vtscan_command(arguments):
@@ -92,6 +228,7 @@ def parse_arguments():
 
     subparsers = parser.add_subparsers(dest='name', title='subcommands',
                                        description='valid subcommands')
+
     list_parser = subparsers.add_parser('list',
                                         help='Lists the content of a disk.')
     list_parser.add_argument('disk', type=str, help='path to disk image')
@@ -100,22 +237,45 @@ def parse_arguments():
     list_parser.add_argument('-s', '--size', action='store_true',
                              default=False, help='report file sizes')
 
-    list_parser = subparsers.add_parser('compare',
+    compare_parser = subparsers.add_parser('compare',
                                         help='Compares two disks.')
 
-    list_parser.add_argument('disk1', type=str, help='path to first disk image')
-    list_parser.add_argument('disk2', type=str,
-                             help='path to second disk image')
-    list_parser.add_argument('-c', '--concurrent', action='store_true',
-                             default=False, help='use concurrency')
-    list_parser.add_argument('-e', '--extract', action='store_true',
-                             default=False, help='extract new files')
-    list_parser.add_argument('-p', '--path', type=str, default='.',
-                             help='path where to extract files')
-    list_parser.add_argument('-i', '--identify', action='store_true',
-                             default=False, help='report file types')
-    list_parser.add_argument('-s', '--size', action='store_true',
-                             default=False, help='report file sizes')
+    compare_parser.add_argument('disk1', type=str,
+                                help='path to first disk image')
+    compare_parser.add_argument('disk2', type=str,
+                                help='path to second disk image')
+    compare_parser.add_argument('-c', '--concurrent', action='store_true',
+                                default=False, help='use concurrency')
+    compare_parser.add_argument('-e', '--extract', action='store_true',
+                                default=False, help='extract new files')
+    compare_parser.add_argument('-p', '--path', type=str, default='.',
+                                help='path where to extract files')
+    compare_parser.add_argument('-i', '--identify', action='store_true',
+                                default=False, help='report file types')
+    compare_parser.add_argument('-s', '--size', action='store_true',
+                                default=False, help='report file sizes')
+    compare_parser.add_argument('-r', '--registry', action='store_true',
+                                default=False, help='compare registry')
+
+    registry_parser = subparsers.add_parser(
+        'registry', help='Lists the content of a registry file.')
+    registry_parser.add_argument('hive', type=str, help='path to hive file')
+    registry_parser.add_argument('-d', '--disk', type=str, default=None,
+                                 help='path to disk image')
+
+    usnjrnl_parser = subparsers.add_parser(
+        'usnjrnl', help='Parses the Update Sequence Number Journal file.')
+    usnjrnl_parser.add_argument('usnjrnl', type=str, help='path to USN file')
+    usnjrnl_parser.add_argument('-d', '--disk', type=str, default=None,
+                                help='path to disk image')
+
+    timeline_parser = subparsers.add_parser(
+        'timeline', help='Builds the event timeline of an NTFS disk.')
+    timeline_parser.add_argument('disk', type=str, help='path to disk image')
+    timeline_parser.add_argument('-i', '--identify', action='store_true',
+                                 default=False, help='report file types')
+    timeline_parser.add_argument('-s', '--hash', action='store_true',
+                                 default=False, help='report file hash (SHA1)')
 
     vtscan_parser = subparsers.add_parser(
         'vtscan', help='Scans a disk and queries VirusTotal.')

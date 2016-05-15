@@ -33,13 +33,13 @@
 
 import os
 import logging
-from pebble import thread
-from collections import defaultdict
+from itertools import chain
+from pebble import process, thread
+from tempfile import NamedTemporaryFile
 
-from vminspect.utils import unix_path, makedirs
-from vminspect.filesystem import FileSystem, add_file_type, add_file_size
-
-from vminspect.winregparser import registry_files, compare_registry_hives
+from vminspect.filesystem import FileSystem
+from vminspect.winreg import RegistryHive, registry_root
+from vminspect.winreg import user_registries_path, registries_path
 
 
 class DiskComparator:
@@ -56,16 +56,15 @@ class DiskComparator:
                             FileSystem(self.disks[1]))
 
         for filesystem in self.filesystems:
-            filesystem.mount_disk()
+            filesystem.mount()
 
         return self
 
     def __exit__(self, *_):
         for filesystem in self.filesystems:
-            filesystem.umount_disk()
+            filesystem.umount()
 
-    def compare(self, extract=False, concurrent=False, identify=False,
-                size=False, path='.'):
+    def compare(self, concurrent=False, identify=False, size=False):
         """Compares the two disks according to flags.
 
         Generates the following report:
@@ -78,12 +77,6 @@ class DiskComparator:
                                  'sha1': 'sha1_of_the_file_on_disk0',
                                  'original_sha1': 'sha1_of_the_file_on_disk0'}]}
 
-        If extract is set to True,
-        it will extract the created and modified files into the folder given
-        by path/extracted_files and add the following values to the report.
-
-            {'extracted_files': [<sha1>, <sha1>]}
-
         If concurrent is set to True, the logic will use multiple CPUs to
         speed up the process.
 
@@ -92,42 +85,77 @@ class DiskComparator:
 
         """
         self.logger.debug("Comparing FS contents.")
-        results = compare_filesystems(*self.filesystems, concurrent=concurrent)
+        results = compare_filesystems(self.filesystems[0], self.filesystems[1],
+                                      concurrent=concurrent)
 
         if identify:
             self.logger.debug("Gatering file types.")
-            results = files_type(results, *self.filesystems)
+            results = files_type(self.filesystems[0], self.filesystems[1],
+                                 results)
 
         if size:
             self.logger.debug("Gatering file sizes.")
-            results = files_size(results, *self.filesystems)
-
-        files = results['created_files'] + results['modified_files']
-
-        if extract:
-            self.logger.debug("Extracting files.")
-            extracted_files, failed = self._extract_files(files, path)
-
-            results['extracted_files'] = [f for f in extracted_files.keys()]
-            results['extraction_errors'] = [f for f in failed.keys()]
-
-        analyse_registry = False  # TODO: test
-        if analyse_registry:
-            self.logger.debug("Comparing registries.")
-            extracted_files = self._extract_registries(files, path, concurrent)
-            results['registry_changes'] = compare_registries(files,
-                                                             extracted_files)
+            results = files_size(self.filesystems[0], self.filesystems[1],
+                                 results)
 
         return results
 
-    def _extract_files(self, files, path):
+    def extract(self, disk, files, path='.'):
+        """Extracts the given files from the given disk.
+
+        Disk must be an integer (1 or 2) indicating from which of the two disks
+        to extract.
+
+        Files must be a list of dictionaries containing
+        the keys 'path' and 'sha1'.
+
+        Files will be extracted in path and will be named with their sha1.
+
+        Returns a dictionary.
+
+            {'extracted_files': [<sha1>, <sha1>],
+             'extraction_errors': [<sha1>, <sha1>]}
+
+        """
+        self.logger.debug("Extracting files.")
+        extracted_files, failed = self._extract_files(disk, files, path)
+
+        return {'extracted_files': [f for f in extracted_files.keys()],
+                'extraction_errors': [f for f in failed.keys()]}
+
+    def compare_registry(self, concurrent=False):
+        """Compares the Windows Registry contained within the two File Systems.
+
+        It parses all the registry hive files contained within the disks
+        and generates the following report.
+
+            {'created_keys': {'\\Reg\\Key': (('Key', 'Type', 'Value'))}
+             'deleted_keys': ['\\Reg\\Key', ...],
+             'created_values': {'\\Reg\\Key': (('Key', 'Type', 'NewValue'))},
+             'deleted_values': {'\\Reg\\Key': (('Key', 'Type', 'OldValue'))},
+             'modified_values': {'\\Reg\\Key': (('Key', 'Type', 'NewValue'))}}
+
+        Only registry hives which are contained in both disks are compared.
+        If the second disk contains a new registry hive,
+        its content can be listed using winreg.RegistryHive.registry() method.
+
+        If the concurrent flag is True,
+        two processes will be used speeding up the comparison on multiple CPUs.
+
+        """
+        self.logger.debug("Comparing Windows registries.")
+
+        self._assert_windows()
+
+        return compare_registries(self.filesystems[0], self.filesystems[1],
+                                  concurrent=concurrent)
+
+    def _extract_files(self, disk, files, path):
         path = os.path.join(path, 'extracted_files')
-        registry = registry_files(files, path_getter=lambda f: f.get('path'))
-        extract = (f for f in files if f not in registry)
 
         makedirs(path)
 
-        extracted, failed = extract_files(self.filesystems[1], extract, path)
+        extracted, failed = extract_files(self.filesystems[disk], files, path)
 
         self.logger.info("Files extracted into %s.", path)
         if failed:
@@ -137,32 +165,9 @@ class DiskComparator:
 
         return extracted, failed
 
-    def _extract_registries(self, files, path, concurrent):
-        self._assert_windows()
-
-        registry = registry_files(files, path_getter=lambda f: f.get('path'))
-        files0 = [{'sha1': f['original_sha1'], 'path': f['path']}
-                  for f in registry]
-        files1 = [{'sha1': f['sha1'], 'path': f['path']} for f in registry]
-
-        if concurrent:
-            task0 = thread.concurrent(target=extract_files,
-                                      args=(self.filesystems[0], files0, path))
-            task1 = thread.concurrent(target=extract_files,
-                                      args=(self.filesystems[1], files1, path))
-
-            files0 = task0.get()
-            files1 = task1.get()
-        else:
-            files0 = extract_files(self.filesystems[0], files0, path)
-            files1 = extract_files(self.filesystems[1], files1, path)
-
-        return files0 + files1
-
     def _assert_windows(self):
-        for filesystem in self.filesystems:
-            if filesystem.os_type != 'windows':
-                raise RuntimeError("No Windows OS detected")
+        if not all((fs.osname == 'windows' for fs in self.filesystems)):
+            raise RuntimeError("Both disks must contain a Windows File System")
 
 
 def compare_filesystems(fs0, fs1, concurrent=False):
@@ -182,19 +187,19 @@ def compare_filesystems(fs0, fs1, concurrent=False):
 
     """
     if concurrent:
-        task0 = thread.concurrent(target=fs0.list_files)
-        task1 = thread.concurrent(target=fs1.list_files)
+        task0 = thread.concurrent(target=visit_filesystem, args=(fs0, ))
+        task1 = thread.concurrent(target=visit_filesystem, args=(fs1, ))
 
         files0 = task0.get()
         files1 = task1.get()
     else:
-        files0 = fs0.list_files()
-        files1 = fs1.list_files()
+        files0 = visit_filesystem(fs0)
+        files1 = visit_filesystem(fs1)
 
-    return compare_files(files0, files1)
+    return file_comparison(files0, files1)
 
 
-def compare_files(files0, files1):
+def file_comparison(files0, files1):
     """Compares two dictionaries of files returning their difference.
 
         {'created_files': [<files in files1 and not in files0>],
@@ -202,24 +207,26 @@ def compare_files(files0, files1):
          'modified_files': [<files in both files0 and files1 but different>]}
 
     """
-    results = defaultdict(list)
+    comparison = {'created_files': [],
+                  'deleted_files': [],
+                  'modified_files': []}
 
     for path, sha1 in files1.items():
         if path in files0:
             if sha1 != files0[path]:
-                results['modified_files'].append(
+                comparison['modified_files'].append(
                     {'path': path,
                      'original_sha1': files0[path],
                      'sha1': sha1})
         else:
-            results['created_files'].append({'path': path,
-                                             'sha1': sha1})
+            comparison['created_files'].append({'path': path,
+                                                'sha1': sha1})
     for path, sha1 in files0.items():
         if path not in files1:
-            results['deleted_files'].append({'path': path,
-                                             'original_sha1': files0[path]})
+            comparison['deleted_files'].append({'path': path,
+                                                'original_sha1': files0[path]})
 
-    return results
+    return comparison
 
 
 def extract_files(filesystem, files, path):
@@ -243,7 +250,7 @@ def extract_files(filesystem, files, path):
     failed_extractions = {}
 
     for file_to_extract in files:
-        source = unix_path(file_to_extract['path'])
+        source = file_to_extract['path']
         destination = os.path.join(path, file_to_extract['sha1'])
 
         if not os.path.exists(destination):
@@ -258,41 +265,153 @@ def extract_files(filesystem, files, path):
     return extracted_files, failed_extractions
 
 
-def files_type(files, fs0, fs1):
+def compare_registries(fs0, fs1, concurrent=False):
+    """Compares the Windows Registry contained within the two File Systems.
+
+    If the concurrent flag is True,
+    two processes will be used speeding up the comparison on multiple CPUs.
+
+    Returns a dictionary.
+
+        {'created_keys': {'\\Reg\\Key': (('Key', 'Type', 'Value'), ...)}
+         'deleted_keys': ['\\Reg\\Key', ...],
+         'created_values': {'\\Reg\\Key': (('Key', 'Type', 'NewValue'), ...)},
+         'deleted_values': {'\\Reg\\Key': (('Key', 'Type', 'OldValue'), ...)},
+         'modified_values': {'\\Reg\\Key': (('Key', 'Type', 'NewValue'), ...)}}
+
+    """
+    hives = compare_hives(fs0, fs1)
+
+    if concurrent:
+        task0 = process.concurrent(target=parse_registries, args=(fs0, hives))
+        task1 = process.concurrent(target=parse_registries, args=(fs1, hives))
+
+        registry0 = task0.get()
+        registry1 = task1.get()
+    else:
+        registry0 = parse_registries(fs0, hives)
+        registry1 = parse_registries(fs1, hives)
+
+    return registry_comparison(registry0, registry1)
+
+
+def registry_comparison(registry0, registry1):
+    """Compares two dictionaries of registry keys returning their difference."""
+    comparison = {'created_keys': {},
+                  'deleted_keys': [],
+                  'created_values': {},
+                  'deleted_values': {},
+                  'modified_values': {}}
+
+    for key, values in registry1.items():
+        if key in registry0:
+            if values != registry0[key]:
+                created, deleted, modified = compare_values(registry0[key],
+                                                            values)
+
+                if created:
+                    comparison['created_values'][key] = created
+                if deleted:
+                    comparison['deleted_values'][key] = deleted
+                if modified:
+                    comparison['modified_values'][key] = modified
+        else:
+            comparison['created_keys'][key] = values
+
+    for key in registry0.keys():
+        if key not in registry1:
+            comparison['deleted_keys'].append(key)
+
+    return comparison
+
+
+def compare_values(values0, values1):
+    """Compares all the values of a single registry key."""
+    values0 = {v[0]: v[1:] for v in values0}
+    values1 = {v[0]: v[1:] for v in values1}
+
+    created = [(k, v[0], v[1]) for k, v in values1.items() if k not in values0]
+    deleted = [(k, v[0], v[1]) for k, v in values0.items() if k not in values1]
+    modified = [(k, v[0], v[1]) for k, v in values0.items()
+                if v != values1.get(k, None)]
+
+    return created, deleted, modified
+
+
+def compare_hives(fs0, fs1):
+    """Compares all the windows registry hive files
+    returning those which differ.
+
+    """
+    registries = []
+
+    for path in chain(registries_path(fs0.fsroot), user_registries(fs0, fs1)):
+        if fs0.checksum(path) != fs1.checksum(path):
+            registries.append(path)
+
+    return registries
+
+
+def user_registries(fs0, fs1):
+    """Returns the list of user registries present on both FileSystems."""
+    for user in fs0.ls('{}Users'.format(fs0.fsroot)):
+        for path in user_registries_path(fs0.fsroot, user):
+            if fs1.exists(path):
+                yield path
+
+
+def files_type(fs0, fs1, files):
     """Inspects the file type of the given files."""
-    files['deleted_files'] = add_file_type(fs0, files['deleted_files'])
-    for key in ('created_files', 'modified_files'):
-        files[key] = add_file_type(fs1, files[key])
+    for file_meta in files['deleted_files']:
+        file_meta['type'] = fs0.file(file_meta['path'])
+    for file_meta in files['created_files'] + files['modified_files']:
+        file_meta['type'] = fs1.file(file_meta['path'])
 
     return files
 
 
-def files_size(files, fs0, fs1):
+def files_size(fs0, fs1, files):
     """Gets the file size of the given files."""
-    files['deleted_files'] = add_file_size(fs0, files['deleted_files'])
-    for key in ('created_files', 'modified_files'):
-        files[key] = add_file_size(fs1, files[key])
+    for file_meta in files['deleted_files']:
+        file_meta['size'] = fs0.stat(file_meta['path'])['size']
+    for file_meta in files['created_files'] + files['modified_files']:
+        file_meta['size'] = fs1.stat(file_meta['path'])['size']
 
     return files
 
 
-def compare_registries(files, extracted_files):
-    """Compares all the registry hive files and aggregates the results."""
-    registry_changes = defaultdict(list)
+def visit_filesystem(filesystem):
+    """Utility function for running the files iterator at once.
 
-    for registry_file in registry_files(files,
-                                        path_getter=lambda f: f.get('path')):
-        old_registry_path = extracted_files[registry_file['original_sha1']]
-        new_registry_path = extracted_files[registry_file['sha1']]
+    Returns a dictionary.
 
-        try:
-            registry_activity = compare_registry_hives(old_registry_path,
-                                                       new_registry_path)
-        except RuntimeError as error:
-            raise RuntimeError("Unable to process registry hives %s, %s: %s"
-                               % (old_registry_path, new_registry_path, error))
+        {'/path/on/filesystem': 'file_hash'}
 
-        for key, value in registry_activity.items():
-            registry_changes[key].extend(value)
+    """
+    return dict(filesystem.checksums('/'))
 
-    return registry_changes
+
+def parse_registries(filesystem, registries):
+    """Returns a dictionary with the content of the given registry hives.
+
+    {"\\Registry\\Key\\", (("ValueKey", "ValueType", ValueValue))}
+
+    """
+    results = {}
+
+    for path in registries:
+        with NamedTemporaryFile(buffering=0) as tempfile:
+            filesystem.download(path, tempfile.name)
+
+            registry = RegistryHive(tempfile.name)
+            registry.rootkey = registry_root(path)
+
+            results.update(dict(registry.keys()))
+
+    return results
+
+
+def makedirs(path):
+    """Creates the directory tree if non existing."""
+    if not os.path.exists(path):
+        os.makedirs(path)

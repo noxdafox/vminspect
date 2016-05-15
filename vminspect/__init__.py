@@ -29,10 +29,18 @@
 
 
 __all__ = ['FileSystem',
-           'list_files',
+           'RegistryHive',
+           'registry_root',
+           'registries_path',
+           'user_registries_path',
+           'usn_journal',
            'DiskComparator',
-           'compare_filesystems']
+           'NTFSTimeline']
 
 
-from vminspect.filesystem import FileSystem, list_files
-from vminspect.comparator import DiskComparator, compare_filesystems
+from vminspect.usnjrnl import usn_journal
+from vminspect.timeline import NTFSTimeline
+from vminspect.filesystem import FileSystem
+from vminspect.comparator import DiskComparator
+from vminspect.winreg import RegistryHive, registry_root
+from vminspect.winreg import registries_path, user_registries_path
