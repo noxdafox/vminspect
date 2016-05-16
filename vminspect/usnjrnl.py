@@ -35,16 +35,122 @@ import re
 import sys
 import json
 
+from itertools import count
 from collections import namedtuple
 from struct import Struct, unpack_from
 from datetime import datetime, timedelta
+
+
+def usn_journal(path):
+    """Iterates over the Windows Update Sequence Number entries
+    contained in the file at the given path.
+
+    """
+    with open(path, 'rb') as journal_file:
+        journal = journal_file.read()
+
+    yield from parse_journal(journal)
+
+
+def parse_journal(journal):
+    """Iterates over the journal's records taking care of paddings."""
+    counter = count()
+
+    while journal:
+        header = RECORD_HEADER.unpack_from(journal)
+        size = header[0]
+
+        try:
+            if size > 0:
+                yield parse_record(header, journal[:size])
+
+                journal = journal[size:]
+            else:
+                journal = remove_zeroes(journal)
+
+            next(counter)
+        except RuntimeError:
+            yield CorruptedUsnRecord(next(counter))
+
+
+def parse_record(header, record):
+    """Parses a record according to its version."""
+    major_version = header[1]
+
+    try:
+        return RECORD_PARSER[major_version](header, record)
+    except KeyError as error:
+        raise RuntimeError("Corrupted USN Record") from error
+
+
+def usn_v2_record(header, record):
+    """Extracts USN V2 record information."""
+    length, major_version, minor_version = header
+    fields = V2_RECORD.unpack_from(record, RECORD_HEADER.size)
+
+    return UsnRecord(length,
+                     float('{}.{}'.format(major_version, minor_version)),
+                     fields[0] | fields[1] << 16,  # 6 bytes little endian mft
+                     fields[2],  # 2 bytes little endian mft sequence
+                     fields[3] | fields[4] << 16,  # 6 bytes little endian mft
+                     fields[5],  # 2 bytes little endian mft sequence
+                     fields[6],
+                     str(datetime(1601, 1, 1) +
+                         timedelta(microseconds=(fields[7] / 10))),
+                     unpack_flags(fields[8], REASONS),
+                     unpack_flags(fields[9], SOURCEINFO),
+                     fields[10],
+                     unpack_flags(fields[11], ATTRIBUTES),
+                     str(unpack_from('{}s'.format(fields[12]).encode(),
+                                     record, fields[13])[0], 'utf16'))
+
+
+def usn_v3_record(header, record):
+    """Extracts USN V3 record information."""
+    length, major_version, minor_version = header
+    fields = V3_RECORD.unpack_from(record, RECORD_HEADER.size)
+
+    raise NotImplementedError('Not implemented')
+
+
+def usn_v4_record(header, record):
+    """Extracts USN V4 record information."""
+    length, major_version, minor_version = header
+    fields = V4_RECORD.unpack_from(record, RECORD_HEADER.size)
+
+    raise NotImplementedError('Not implemented')
+
+
+def unpack_flags(value, flags):
+    """Multiple flags might be packed in the same field."""
+    try:
+        return [flags[value]]
+    except KeyError:
+        return [flags[k] for k in sorted(flags.keys()) if k & value > 0]
+
+
+def remove_zeroes(journal):
+    try:
+        offset = re.search(b'[^\x00]', journal).start()
+        offset -= (offset % 8)
+    except AttributeError:  # EOF reached
+        return b''
+
+    return journal[offset:]
+
+
+RECORD_PARSER = {2: usn_v2_record,
+                 3: usn_v3_record,
+                 4: usn_v4_record}
 
 
 RECORD_HEADER = Struct('Ihh')
 # https://msdn.microsoft.com/en-us/library/windows/desktop/aa365722%28v=vs.85%29.aspx
 V2_RECORD = Struct('<LHHLHHqqIIIIhh')
 # https://msdn.microsoft.com/en-us/library/windows/desktop/hh802708%28v=vs.85%29.aspx
-V3_RECORD = Struct('QQqqIIIIhh')
+V3_RECORD = Struct('QQqqIIIIhh')  # TODO
+# https://msdn.microsoft.com/en-us/library/windows/desktop/mt684964%28v=vs.85%29.aspx
+V4_RECORD = Struct('QQqqIIIIhh')  # TODO
 
 
 UsnRecord = namedtuple('UsnRecord', ('length',
@@ -60,6 +166,7 @@ UsnRecord = namedtuple('UsnRecord', ('length',
                                      'security_id',
                                      'file_attributes',
                                      'file_name'))
+CorruptedUsnRecord = namedtuple('CorruptedUsnRecord', ('index'))
 
 
 REASONS = {0x00: " ",
@@ -110,86 +217,3 @@ SOURCEINFO = {0x00: " ",
               0x01: "DATA_MANAGEMENT",
               0x02: "AUXILIARY_DATA",
               0x04: "REPLICATION_MANAGEMENT"}
-
-
-def usn_journal(path):
-    """Iterates over the Windows Update Sequence Number entries
-    contained in the file at the given path.
-
-    """
-    with open(path, 'rb') as journal_file:
-        journal = journal_file.read()
-
-    yield from parse_journal(journal)
-
-
-def parse_journal(journal):
-    """Iterates over the journal's records taking care of paddings."""
-    while journal:
-        record_header = RECORD_HEADER.unpack_from(journal)
-        record_size = record_header[0]
-
-        if record_size > 0:
-            yield parse_record(record_header, journal[:record_size])
-
-            journal = journal[record_size:]
-        else:
-            journal = remove_zeroes(journal)
-
-
-def parse_record(header, record):
-    """Parses a record according to its version."""
-    major_version = header[1]
-
-    if major_version == 2:
-        fields = V2_RECORD.unpack_from(record, RECORD_HEADER.size)
-        return usn_v2_record(header, fields, record)
-    else:
-        fields = V3_RECORD.unpack_from(record, RECORD_HEADER.size)
-        return usn_v3_record(header, fields, record)
-
-
-def usn_v2_record(header, fields, record):
-    """Extracts USN V2 record information."""
-    length, major_version, minor_version = header
-
-    return UsnRecord(length,
-                     float('{}.{}'.format(major_version, minor_version)),
-                     fields[0] | fields[1] << 16,  # 6 bytes little endian mft
-                     fields[2],  # 2 bytes little endian mft sequence
-                     fields[3] | fields[4] << 16,  # 6 bytes little endian mft
-                     fields[5],  # 2 bytes little endian mft sequence
-                     fields[6],
-                     str(datetime(1601, 1, 1) +
-                         timedelta(microseconds=(fields[7] / 10))),
-                     unpack_flags(fields[8], REASONS),
-                     unpack_flags(fields[9], SOURCEINFO),
-                     fields[10],
-                     unpack_flags(fields[11], ATTRIBUTES),
-                     str(unpack_from('{}s'.format(fields[12]).encode(),
-                                     record, fields[13])[0], 'utf16'))
-
-
-def usn_v3_record(header, fields, record):
-    """Extracts USN V3 record information."""
-    length, major_version, minor_version = header
-
-    raise NotImplementedError('Not implemented')
-
-
-def unpack_flags(value, flags):
-    """Multiple flags might be packed in the same field."""
-    try:
-        return [flags[value]]
-    except KeyError:
-        return [flags[k] for k in sorted(flags.keys()) if k & value > 0]
-
-
-def remove_zeroes(journal):
-    try:
-        offset = re.search(b'[^\x00]', journal).start()
-        offset -= (offset % 8)
-    except AttributeError:  # EOF reached
-        return b''
-
-    return journal[offset:]
