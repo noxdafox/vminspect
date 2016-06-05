@@ -114,7 +114,7 @@ class NTFSTimeline(FileSystem):
 
 def parse_journal(journal):
     """Parses the USN Journal content removing duplicates."""
-    keyfunc = lambda e: str(e.file_reference_number) + e.timestamp
+    keyfunc = lambda e: e.file_name + e.timestamp
     event_groups = (tuple(g) for k, g in groupby(journal, key=keyfunc))
 
     return [journal_event(g) for g in event_groups]

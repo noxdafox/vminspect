@@ -161,6 +161,7 @@ def vtscan_command(arguments):
 
         return [r._asdict() for r in vtscanner.scan(filetypes=filetypes)]
 
+
 def usnjrnl_command(arguments):
     return parse_usnjrnl(arguments.usnjrnl, disk=arguments.disk)
 
