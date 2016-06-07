@@ -44,7 +44,7 @@ Event = namedtuple('Event', ('file_reference_number', 'path', 'size',
                              'allocated', 'timestamp','changes', 'attributes'))
 JrnlEvent = namedtuple('JrnlEvent', ('inode', 'parent_inode', 'name',
                                      'timestamp', 'changes', 'attributes'))
-Dirent = namedtuple('Dirent', ('path', 'size', 'allocated'))
+Dirent = namedtuple('Dirent', ('path', 'size', 'type', 'allocated'))
 
 
 class NTFSTimeline(FileSystem):
@@ -100,14 +100,18 @@ class NTFSTimeline(FileSystem):
         a map inode -> file info.
 
         """
+        content = defaultdict(list)
         root = self.guestfs.inspect_get_roots()[0]
 
-        return {dirent['tsk_inode'] :
-                Dirent(self.path('/' + dirent['tsk_name']),
-                       dirent['tsk_size'],
-                       dirent['tsk_flags'] == 1 and True or False)
+        for entry in self.guestfs.filesystem_walk(root):
+            dirent = Dirent(self.path('/' + entry['tsk_name']),
+                            entry['tsk_size'],
+                            entry['tsk_type'],
+                            entry['tsk_flags'] == 1 and True or False)
 
-                for dirent in self.guestfs.filesystem_walk(root)}
+            content[entry['tsk_inode']].append(dirent)
+
+        return content
 
 
 def parse_journal(journal):
@@ -135,23 +139,26 @@ def generate_timeline(usnjrnl, content):
     and the filesystem content.
 
     """
+    logger = logging.getLogger("%s" % (__name__))
+
     for event in usnjrnl:
         try:
             dirent = lookup_dirent(event, content)
 
             yield Event(event.inode, dirent.path, dirent.size, dirent.allocated,
                         event.timestamp, event.changes, event.attributes)
-        except LookupError:
-            pass
+        except LookupError as error:
+            logger.debug(error)
 
 
 def lookup_dirent(event, content):
-    dirent = content[event.inode]
+    for dirent in content[event.inode]:
+        if event.name in dirent.path:
+            return dirent
 
-    if event.name in dirent.path:
-        return dirent
-    else:  # try constructing the full path from the parent folder
-        parent_dirent = content[event.parent_inode]
-
-        return Dirent(ntpath.join(parent_dirent.path, event.name),
-                      dirent.size, dirent.allocated)
+    # try constructing the full path from the parent folder
+    for dirent in content[event.parent_inode]:
+        if dirent.type == 'd':
+            return Dirent(ntpath.join(dirent.path, event.name), -1, None, False)
+    else:
+        raise LookupError("File %s not found" % event.name)
