@@ -34,10 +34,10 @@
 import re
 import sys
 import json
+import struct
 
 from itertools import count
 from collections import namedtuple
-from struct import Struct, unpack_from
 from datetime import datetime, timedelta
 
 
@@ -79,7 +79,7 @@ def parse_record(header, record):
 
     try:
         return RECORD_PARSER[major_version](header, record)
-    except KeyError as error:
+    except (KeyError, struct.error) as error:
         raise RuntimeError("Corrupted USN Record") from error
 
 
@@ -101,8 +101,8 @@ def usn_v2_record(header, record):
                      unpack_flags(fields[9], SOURCEINFO),
                      fields[10],
                      unpack_flags(fields[11], ATTRIBUTES),
-                     str(unpack_from('{}s'.format(fields[12]).encode(),
-                                     record, fields[13])[0], 'utf16'))
+                     str(struct.unpack_from('{}s'.format(fields[12]).encode(),
+                                            record, fields[13])[0], 'utf16'))
 
 
 def usn_v3_record(header, record):
@@ -144,13 +144,13 @@ RECORD_PARSER = {2: usn_v2_record,
                  4: usn_v4_record}
 
 
-RECORD_HEADER = Struct('Ihh')
+RECORD_HEADER = struct.Struct('Ihh')
 # https://msdn.microsoft.com/en-us/library/windows/desktop/aa365722%28v=vs.85%29.aspx
-V2_RECORD = Struct('<LHHLHHqqIIIIhh')
+V2_RECORD = struct.Struct('<LHHLHHqqIIIIhh')
 # https://msdn.microsoft.com/en-us/library/windows/desktop/hh802708%28v=vs.85%29.aspx
-V3_RECORD = Struct('QQqqIIIIhh')  # TODO
+V3_RECORD = struct.Struct('QQqqIIIIhh')  # TODO
 # https://msdn.microsoft.com/en-us/library/windows/desktop/mt684964%28v=vs.85%29.aspx
-V4_RECORD = Struct('QQqqIIIIhh')  # TODO
+V4_RECORD = struct.Struct('QQqqIIIIhh')  # TODO
 
 
 UsnRecord = namedtuple('UsnRecord', ('length',
