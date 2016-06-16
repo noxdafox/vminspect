@@ -28,6 +28,7 @@
 # EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
+import os
 import json
 import logging
 import argparse
@@ -191,29 +192,59 @@ def timeline_command(arguments):
 
     with NTFSTimeline(arguments.disk) as timeline:
         try:
-            events = [e._asdict() for e in timeline.timeline()]
+            events = [e._asdict() for e in timeline.timeline() if e.allocated]
         except AttributeError:
             raise RuntimeError(MISSING_GUESTFS_FEATURE)
 
         if arguments.identify:
             logger.debug("Gatering file types.")
-            for event in events:
-                if event['allocated']:
-                    try:
-                        event['type'] = timeline.file(event['path'])
-                    except RuntimeError:
-                        pass
+            events = identify_files(timeline, events)
 
         if arguments.hash:
-            logger.debug("Gatering files hash.")
-            for event in events:
-                if event['allocated']:
-                    try:
-                        event['hash'] = timeline.checksum(event['path'])
-                    except RuntimeError:
-                        pass
+            logger.debug("Gatering file hashes.")
+            events = calculate_hashes(timeline, events)
+
+        if arguments.extract:
+            logger.debug("Extracting created files.")
+            extract_files(timeline, arguments.extract, events)
 
     return events
+
+
+def identify_files(timeline, events):
+    for event in events:
+        try:
+            event['type'] = timeline.file(event['path'])
+        except RuntimeError:
+            pass
+
+    return events
+
+
+def calculate_hashes(timeline, events):
+    for event in events:
+        try:
+            event['hash'] = timeline.checksum(event['path'])
+        except RuntimeError:
+            pass
+
+    return events
+
+
+def extract_files(timeline, path, events):
+    for event in (e for e in events if 'FILE_CREATE' in e['changes']):
+        try:
+            if 'hash' in event:
+                sha_hash = event['hash']
+            else:
+                sha_hash = timeline.checksum(event['path'])
+            source = event['path']
+            destination = os.path.join(path, sha_hash)
+
+            if not os.path.exists(destination):
+                timeline.download(source, destination)
+        except RuntimeError:
+            pass
 
 
 def parse_arguments():
@@ -280,6 +311,8 @@ def parse_arguments():
                                  default=False, help='report file types')
     timeline_parser.add_argument('-s', '--hash', action='store_true',
                                  default=False, help='report file hash (SHA1)')
+    timeline_parser.add_argument('-e', '--extract', type=str, default='',
+                                 help='Extract created files into path')
 
     return parser.parse_args()
 
