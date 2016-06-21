@@ -32,8 +32,6 @@
 
 
 import re
-import sys
-import json
 import struct
 
 from itertools import count
