@@ -41,7 +41,7 @@ from vminspect.usnjrnl import CorruptedUsnRecord, usn_journal
 
 
 Event = namedtuple('Event', ('file_reference_number', 'path', 'size',
-                             'allocated', 'timestamp','changes', 'attributes'))
+                             'allocated', 'timestamp', 'changes', 'attributes'))
 
 
 class NTFSTimeline(FileSystem):
@@ -98,9 +98,12 @@ class NTFSTimeline(FileSystem):
 
         """
         content = defaultdict(list)
-        root = self.guestfs.inspect_get_roots()[0]
+        root_partition = self.guestfs.inspect_get_roots()[0]
 
-        for entry in self.guestfs.filesystem_walk(root):
+        inode, dirent = self._root_dirent()
+        content[inode].append(dirent)
+
+        for entry in self.guestfs.filesystem_walk(root_partition):
             dirent = Dirent(self.path('/' + entry['tsk_name']),
                             entry['tsk_size'],
                             entry['tsk_type'],
@@ -109,6 +112,12 @@ class NTFSTimeline(FileSystem):
             content[entry['tsk_inode']].append(dirent)
 
         return content
+
+    def _root_dirent(self):
+        """Returns the root folder dirent as filesystem_walk API doesn't."""
+        fstat = self.stat('C:\\')
+
+        return fstat['ino'], Dirent(self.path('/'), fstat['size'], 'd', True)
 
 
 def parse_journal(journal):
