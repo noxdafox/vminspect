@@ -36,15 +36,12 @@ from itertools import chain, groupby
 from tempfile import NamedTemporaryFile
 from collections import defaultdict, namedtuple
 
-from vminspect.usnjrnl import usn_journal
 from vminspect.filesystem import FileSystem
+from vminspect.usnjrnl import CorruptedUsnRecord, usn_journal
 
 
 Event = namedtuple('Event', ('file_reference_number', 'path', 'size',
                              'allocated', 'timestamp','changes', 'attributes'))
-JrnlEvent = namedtuple('JrnlEvent', ('inode', 'parent_inode', 'name',
-                                     'timestamp', 'changes', 'attributes'))
-Dirent = namedtuple('Dirent', ('path', 'size', 'type', 'allocated'))
 
 
 class NTFSTimeline(FileSystem):
@@ -115,9 +112,17 @@ class NTFSTimeline(FileSystem):
 
 
 def parse_journal(journal):
-    """Parses the USN Journal content removing duplicates."""
+    """Parses the USN Journal content removing duplicates
+    and corrupted records.
+
+    """
+    events = [e for e in journal if not isinstance(e, CorruptedUsnRecord)]
     keyfunc = lambda e: e.file_name + e.timestamp
-    event_groups = (tuple(g) for k, g in groupby(journal, key=keyfunc))
+    event_groups = (tuple(g) for k, g in groupby(events, key=keyfunc))
+
+    if len(events) < len(list(journal)):
+        LOGGER.debug(
+            "Corrupted records in UsnJrnl, some events might be missing.")
 
     return [journal_event(g) for g in event_groups]
 
@@ -139,8 +144,6 @@ def generate_timeline(usnjrnl, content):
     and the filesystem content.
 
     """
-    logger = logging.getLogger("%s" % (__name__))
-
     for event in usnjrnl:
         try:
             dirent = lookup_dirent(event, content)
@@ -148,7 +151,7 @@ def generate_timeline(usnjrnl, content):
             yield Event(event.inode, dirent.path, dirent.size, dirent.allocated,
                         event.timestamp, event.changes, event.attributes)
         except LookupError as error:
-            logger.debug(error)
+            LOGGER.debug(error)
 
 
 def lookup_dirent(event, content):
@@ -162,3 +165,10 @@ def lookup_dirent(event, content):
             return Dirent(ntpath.join(dirent.path, event.name), -1, None, False)
     else:
         raise LookupError("File %s not found" % event.name)
+
+
+LOGGER = logging.getLogger("%s" % (__name__))
+
+JrnlEvent = namedtuple('JrnlEvent', ('inode', 'parent_inode', 'name',
+                                     'timestamp', 'changes', 'attributes'))
+Dirent = namedtuple('Dirent', ('path', 'size', 'type', 'allocated'))
