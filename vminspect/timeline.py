@@ -126,7 +126,7 @@ def parse_journal(journal):
 
     """
     events = [e for e in journal if not isinstance(e, CorruptedUsnRecord)]
-    keyfunc = lambda e: e.file_name + e.timestamp
+    keyfunc = lambda e: str(e.file_reference_number) + e.file_name + e.timestamp
     event_groups = (tuple(g) for k, g in groupby(events, key=keyfunc))
 
     if len(events) < len(list(journal)):
@@ -165,7 +165,7 @@ def generate_timeline(usnjrnl, content):
 
 def lookup_dirent(event, content):
     for dirent in content[event.inode]:
-        if event.name in dirent.path:
+        if dirent.path.endswith(event.name):
             return dirent
 
     # try constructing the full path from the parent folder
