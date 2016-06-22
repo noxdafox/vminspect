@@ -192,21 +192,24 @@ def timeline_command(arguments):
 
     with NTFSTimeline(arguments.disk) as timeline:
         try:
-            events = [e._asdict() for e in timeline.timeline() if e.allocated]
+            events = [e._asdict() for e in timeline.timeline()]
         except AttributeError:
             raise RuntimeError(MISSING_GUESTFS_FEATURE)
 
         if arguments.identify:
             logger.debug("Gatering file types.")
-            events = identify_files(timeline, events)
+            events = identify_files(timeline,
+                                    (e for e in events if e['allocated']))
 
         if arguments.hash:
             logger.debug("Gatering file hashes.")
-            events = calculate_hashes(timeline, events)
+            events = calculate_hashes(timeline,
+                                      (e for e in events if e['allocated']))
 
         if arguments.extract:
             logger.debug("Extracting created files.")
-            extract_files(timeline, arguments.extract, events)
+            extract_files(timeline, arguments.extract,
+                          (e for e in events if e['allocated']))
 
     return events
 
