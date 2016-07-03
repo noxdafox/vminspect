@@ -30,6 +30,8 @@
 
 import os
 import json
+import shutil
+import hashlib
 import logging
 import argparse
 from tempfile import NamedTemporaryFile
@@ -183,24 +185,25 @@ def timeline_command(arguments):
 
         if arguments.identify:
             logger.debug("Gatering file types.")
-            events = identify_files(timeline,
-                                    (e for e in events if e['allocated']))
+            events = identify_files(timeline, events)
 
         if arguments.hash:
             logger.debug("Gatering file hashes.")
-            events = calculate_hashes(timeline,
-                                      (e for e in events if e['allocated']))
+            events = calculate_hashes(timeline, events)
 
         if arguments.extract:
             logger.debug("Extracting created files.")
-            extract_files(timeline, arguments.extract,
-                          (e for e in events if e['allocated']))
+            extract_created_files(timeline, arguments.extract, events)
+
+        if arguments.recover:
+            logger.debug("Recovering deleted files.")
+            extract_deleted_files(timeline, arguments.recover, events)
 
     return events
 
 
 def identify_files(timeline, events):
-    for event in events:
+    for event in (e for e in events if e['allocated']):
         try:
             event['type'] = timeline.file(event['path'])
         except RuntimeError:
@@ -210,7 +213,7 @@ def identify_files(timeline, events):
 
 
 def calculate_hashes(timeline, events):
-    for event in events:
+    for event in (e for e in events if e['allocated']):
         try:
             event['hash'] = timeline.checksum(event['path'])
         except RuntimeError:
@@ -219,8 +222,9 @@ def calculate_hashes(timeline, events):
     return events
 
 
-def extract_files(timeline, path, events):
-    for event in (e for e in events if 'FILE_CREATE' in e['changes']):
+def extract_created_files(timeline, path, events):
+    for event in (e for e in events
+                  if 'FILE_CREATE' in e['changes'] and e['allocated']):
         try:
             if 'hash' in event:
                 sha_hash = event['hash']
@@ -233,6 +237,25 @@ def extract_files(timeline, path, events):
                 timeline.download(source, destination)
         except RuntimeError:
             pass
+
+
+def extract_deleted_files(timeline, path, events):
+    root = timeline.guestfs.inspect_get_roots()[0]
+
+    for event in (e for e in events if 'FILE_DELETE' in e['changes']):
+        inode = event['file_reference_number']
+
+        try:
+            with NamedTemporaryFile(buffering=0) as tempfile:
+                timeline.guestfs.download_inode(root, inode, tempfile.name)
+
+                event['recovered'] = True
+                event['hash'] = hashlib.sha1(tempfile.read()).hexdigest()
+                destination = os.path.join(path, event['hash'])
+
+                shutil.copy(tempfile.name, destination)
+        except RuntimeError:
+            event['recovered'] = False
 
 
 def parse_arguments():
@@ -301,6 +324,8 @@ def parse_arguments():
                                  default=False, help='report file hash (SHA1)')
     timeline_parser.add_argument('-e', '--extract', type=str, default='',
                                  help='Extract created files into path')
+    timeline_parser.add_argument('-r', '--recover', type=str, default='',
+                                 help='Try recovering deleted files')
 
     return parser.parse_args()
 
