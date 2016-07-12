@@ -31,7 +31,7 @@
 """Module for parsing Windows Update Sequence Number Journal."""
 
 
-import re
+import io
 import struct
 
 from itertools import count
@@ -45,30 +45,30 @@ def usn_journal(path):
 
     """
     with open(path, 'rb') as journal_file:
-        journal = journal_file.read()
-
-    yield from parse_journal(journal)
+        yield from parse_journal_file(journal_file)
 
 
-def parse_journal(journal):
-    """Iterates over the journal's records taking care of paddings."""
+def parse_journal_file(journal_file):
+    """Iterates over the journal's file taking care of paddings."""
     counter = count()
 
-    while journal:
-        header = RECORD_HEADER.unpack_from(journal)
-        size = header[0]
+    for block in read_next_block(journal_file):
+        block = remove_nullchars(block)
 
-        try:
-            if size > 0:
-                yield parse_record(header, journal[:size])
+        while len(block) > MAX_RECORD_SIZE:
+            header = RECORD_HEADER.unpack_from(block)
+            size = header[0]
 
-                journal = journal[size:]
-            else:
-                journal = remove_zeroes(journal)
+            try:
+                yield parse_record(header, block[:size])
 
-            next(counter)
-        except RuntimeError:
-            yield CorruptedUsnRecord(next(counter))
+                next(counter)
+            except RuntimeError:
+                yield CorruptedUsnRecord(next(counter))
+            finally:
+                block = remove_nullchars(block[size:])
+
+        journal_file.seek(- len(block), 1)
 
 
 def parse_record(header, record):
@@ -127,14 +127,23 @@ def unpack_flags(value, flags):
         return [flags[k] for k in sorted(flags.keys()) if k & value > 0]
 
 
-def remove_zeroes(journal):
-    try:
-        offset = re.search(b'[^\x00]', journal).start()
-        offset -= (offset % 8)
-    except AttributeError:  # EOF reached
-        return b''
+def read_next_block(infile, block_size=io.DEFAULT_BUFFER_SIZE):
+    """Iterates over the file in blocks."""
+    chunk = infile.read(block_size)
 
-    return journal[offset:]
+    while chunk:
+        yield chunk
+
+        chunk = infile.read(block_size)
+
+
+def remove_nullchars(block):
+    """Strips NULL chars taking care of bytes alignment."""
+    data = block.lstrip(b'\00')
+
+    padding = b'\00' * ((len(block) - len(data)) % 8)
+
+    return padding + data
 
 
 RECORD_PARSER = {2: usn_v2_record,
@@ -149,6 +158,11 @@ V2_RECORD = struct.Struct('<LHHLHHqqIIIIhh')
 V3_RECORD = struct.Struct('QQqqIIIIhh')  # TODO
 # https://msdn.microsoft.com/en-us/library/windows/desktop/mt684964%28v=vs.85%29.aspx
 V4_RECORD = struct.Struct('QQqqIIIIhh')  # TODO
+
+
+MAX_RECORD_SIZE = RECORD_HEADER.size + max(V2_RECORD.size,
+                                           V3_RECORD.size,
+                                           V4_RECORD.size)
 
 
 UsnRecord = namedtuple('UsnRecord', ('length',
