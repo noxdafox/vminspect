@@ -33,7 +33,7 @@
 
 import ntpath
 import codecs
-from pebble import process
+
 try:
     from hivex import Hivex, hive_types
 except ImportError:
@@ -52,10 +52,6 @@ except ImportError:
         REG_FULL_RESOURCE_DESCRIPTOR = 9
         REG_RESOURCE_REQUIREMENTS_LIST = 10
         REG_QWORD = 11
-
-from tempfile import NamedTemporaryFile
-
-from vminspect.filesystem import FileSystem, posix_path
 
 
 VALUE_TYPES = {
