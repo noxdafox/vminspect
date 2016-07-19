@@ -54,42 +54,6 @@ except ImportError:
         REG_QWORD = 11
 
 
-VALUE_TYPES = {
-    hive_types.REG_NONE: 'REG_NONE',
-    hive_types.REG_SZ: 'REG_SZ',
-    hive_types.REG_EXPAND_SZ: 'REG_EXPAND_SZ',
-    hive_types.REG_BINARY: 'REG_BINARY',
-    hive_types.REG_DWORD: 'REG_DWORD',
-    hive_types.REG_DWORD_BIG_ENDIAN: 'REG_DWORD_BIG_ENDIAN',
-    hive_types.REG_LINK: 'REG_LINK',
-    hive_types.REG_MULTI_SZ: 'REG_MULTI_SZ',
-    hive_types.REG_RESOURCE_LIST: 'REG_RESOURCE_LIST',
-    hive_types.REG_FULL_RESOURCE_DESCRIPTOR: 'REG_FULL_RESOURCE_DESCRIPTOR',
-    hive_types.REG_RESOURCE_REQUIREMENTS_LIST: 'REG_RESOURCE_REQUIREMENTS_LIST',
-    hive_types.REG_QWORD: 'REG_QWORD'}
-
-
-REGISTRY_TYPE = {'DEFAULT': 'HKU',
-                 'NTUSER.DAT': 'HKCU',
-                 'UsrClass.dat': 'HKCU',
-                 'SAM': 'HKLM',
-                 'SYSTEM': 'HKLM',
-                 'SECURITY': 'HKLM',
-                 'SOFTWARE': 'HKLM'}
-
-
-REGISTRY_PATH = ['{}Windows\\System32\\config\\SAM',
-                 '{}Windows\\System32\\config\\SYSTEM',
-                 '{}Windows\\System32\\config\\DEFAULT',
-                 '{}Windows\\System32\\config\\SOFTWARE',
-                 '{}Windows\\System32\\config\\SECURITY']
-
-
-USER_REGISTRY_PATH = [
-    '{}Users\\{}\\NTUSER.DAT',
-    '{}Users\\{}\\AppData\\Local\\Microsoft\\Windows\\UsrClass.dat']
-
-
 class RegistryHive(Hivex):
     """RegistryHive class.
 
@@ -176,3 +140,39 @@ def user_registries_path(fsroot, user):
 
     """
     return (p.format(fsroot, user) for p in USER_REGISTRY_PATH)
+
+
+VALUE_TYPES = {
+    hive_types.REG_NONE: 'REG_NONE',
+    hive_types.REG_SZ: 'REG_SZ',
+    hive_types.REG_EXPAND_SZ: 'REG_EXPAND_SZ',
+    hive_types.REG_BINARY: 'REG_BINARY',
+    hive_types.REG_DWORD: 'REG_DWORD',
+    hive_types.REG_DWORD_BIG_ENDIAN: 'REG_DWORD_BIG_ENDIAN',
+    hive_types.REG_LINK: 'REG_LINK',
+    hive_types.REG_MULTI_SZ: 'REG_MULTI_SZ',
+    hive_types.REG_RESOURCE_LIST: 'REG_RESOURCE_LIST',
+    hive_types.REG_FULL_RESOURCE_DESCRIPTOR: 'REG_FULL_RESOURCE_DESCRIPTOR',
+    hive_types.REG_RESOURCE_REQUIREMENTS_LIST: 'REG_RESOURCE_REQUIREMENTS_LIST',
+    hive_types.REG_QWORD: 'REG_QWORD'}
+
+
+REGISTRY_TYPE = {'DEFAULT': 'HKU',
+                 'NTUSER.DAT': 'HKCU',
+                 'UsrClass.dat': 'HKCU',
+                 'SAM': 'HKLM',
+                 'SYSTEM': 'HKLM',
+                 'SECURITY': 'HKLM',
+                 'SOFTWARE': 'HKLM'}
+
+
+REGISTRY_PATH = ['{}Windows\\System32\\config\\SAM',
+                 '{}Windows\\System32\\config\\SYSTEM',
+                 '{}Windows\\System32\\config\\DEFAULT',
+                 '{}Windows\\System32\\config\\SOFTWARE',
+                 '{}Windows\\System32\\config\\SECURITY']
+
+
+USER_REGISTRY_PATH = [
+    '{}Users\\{}\\NTUSER.DAT',
+    '{}Users\\{}\\AppData\\Local\\Microsoft\\Windows\\UsrClass.dat']
