@@ -107,7 +107,7 @@ class NTFSTimeline(FileSystem):
             dirent = Dirent(self.path('/' + entry['tsk_name']),
                             entry['tsk_size'],
                             entry['tsk_type'],
-                            entry['tsk_flags'] == 1 and True or False)
+                            True if entry['tsk_flags'] & TSK_ALLOC else False)
 
             content[entry['tsk_inode']].append(dirent)
 
@@ -176,8 +176,10 @@ def lookup_dirent(event, content):
         raise LookupError("File %s not found" % event.name)
 
 
-LOGGER = logging.getLogger("%s" % (__name__))
+TSK_ALLOC = 0x01
 
 JrnlEvent = namedtuple('JrnlEvent', ('inode', 'parent_inode', 'name',
                                      'timestamp', 'changes', 'attributes'))
 Dirent = namedtuple('Dirent', ('path', 'size', 'type', 'allocated'))
+
+LOGGER = logging.getLogger("%s" % (__name__))
