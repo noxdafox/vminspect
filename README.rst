@@ -55,34 +55,6 @@ List all the files contained within a disk image.
       ...
     ]
 
-Compare two disk images. Installation of lynx browser on Ubuntu.
-
-::
-
-   vminspect compare --identify ubuntu.qcow2 ubuntu_lynx.qcow2
-
-   {
-     "created_files": [
-       {
-         "type": "ELF 32-bit LSB executable, Intel 80386, version 1 (SYSV) ... ",
-         "sha1": "d4365bec7d0bc68d6fc84718a2b46801de00196d",
-         "path": "/usr/bin/lynx"
-       },
-       {
-        "type": "ASCII text",
-        "sha1": "1e589381fd480138fb43f57dafca5e04cffb67f7",
-        "path": "/etc/lynx-cur/lynx.cfg"
-       },
-       {
-         "type": "troff or preprocessor input, ASCII text (gzip compressed data, ... )",
-         "sha1": "7b8af1510461fd2f448d857e6de32f95c0d8e835",
-         "path": "/usr/share/man/man1/lynx.1.gz"
-       },
-       ...
-     ]
-     ...
-   }
-
 Compare two disk images. ZeroAccess malware on Windows 7.
 
 Highlighted the executable dropping location and two libraries (32 and 64 bit versions) disguised as Desktop.ini files as well as the deletion of Windows Defender related files.
@@ -165,29 +137,6 @@ Query Virustotal regarding the content of a disk.
          },
        }
    ...
-
-List the content of the SOFTWARE registry hive.
-
-::
-
-   vminspect registry --disk windows7.qcow2 C:\\Windows\\System32\\config\\SOFTWARE
-
-   {
-     "HKLM\\Microsoft\\Windows Defender\\Signature Updates": [
-       [
-         "EngineVersion",
-         "REG_SZ",
-         "1.1.6402.0"
-       ],
-       [
-         "ASSignatureVersion",
-         "REG_SZ",
-         "1.95.191.0"
-       ],
-       ...
-     ],
-     ...
-   }
 
 Extract event timelines of NTFS disks. Installation of 7Zip on Windows 7.
 
