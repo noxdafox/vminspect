@@ -138,6 +138,33 @@ Query Virustotal regarding the content of a disk.
        }
    ...
 
+Query a CVE database for vulnerable applications.
+
+::
+
+   vminspect vulnscan http://cve.circl.lu/api/search ubuntu.qcow2
+
+   [
+     {
+       "name": "gnupg",
+       "version": "1.4.16",
+       "vulnerabilities": [
+         [
+           "CVE-2014-4617",
+           "The do_uncompress function in g10/compress.c ..."
+         ]
+       ]
+     },
+     {
+       "name": "openssl",
+       "version": "1.0.1f",
+       "vulnerabilities": [
+         [
+           "CVE-2016-2842",
+           "The doapr_outch function in crypto/bio/b_print.c in OpenSSL 1.0.1 ..."
+         ],
+   ...
+
 Extract event timelines of NTFS disks. Installation of 7Zip on Windows 7.
 
 ::
