@@ -35,10 +35,12 @@ __all__ = ['FileSystem',
            'user_registries_path',
            'usn_journal',
            'DiskComparator',
-           'NTFSTimeline']
+           'NTFSTimeline',
+           'VulnScanner']
 
 
 from vminspect.usnjrnl import usn_journal
+from vminspect.vulnscan import VulnScanner
 from vminspect.timeline import NTFSTimeline
 from vminspect.filesystem import FileSystem
 from vminspect.comparator import DiskComparator
