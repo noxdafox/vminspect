@@ -38,6 +38,7 @@ from tempfile import NamedTemporaryFile
 
 from vminspect.vtscan import VTScanner
 from vminspect.usnjrnl import usn_journal
+from vminspect.vulnscan import VulnScanner
 from vminspect.timeline import NTFSTimeline
 from vminspect.filesystem import FileSystem
 from vminspect.comparator import DiskComparator
@@ -59,6 +60,8 @@ def main():
         results = registry_command(arguments)
     elif arguments.name == 'vtscan':
         results = vtscan_command(arguments)
+    elif arguments.name == 'vulnscan':
+        results = vulnscan_command(arguments)
     elif arguments.name == 'usnjrnl':
         results = usnjrnl_command(arguments)
     elif arguments.name == 'timeline':
@@ -124,6 +127,7 @@ def compare_disks(disk1, disk2, identify=False, size=False, registry=False,
 def registry_command(arguments):
     return parse_registry(arguments.hive, disk=arguments.disk)
 
+
 def parse_registry(hive, disk=None):
     """Parses the registry hive's content and returns a dictionary.
 
@@ -154,6 +158,11 @@ def vtscan_command(arguments):
         filetypes = arguments.types and arguments.types.split(',') or None
 
         return [r._asdict() for r in vtscanner.scan(filetypes=filetypes)]
+
+
+def vulnscan_command(arguments):
+    with VulnScanner(arguments.disk, arguments.url) as vulnscanner:
+        return [r._asdict() for r in vulnscanner.scan(arguments.concurrency)]
 
 
 def usnjrnl_command(arguments):
@@ -308,6 +317,14 @@ def parse_arguments():
     vtscan_parser.add_argument(
         '-t', '--types', type=str, default='',
         help='comma separated list of file types (REGEX) to be scanned')
+
+    vulnscan_parser = subparsers.add_parser(
+        'vulnscan', help='Scans a disk and queries VBE.')
+    vulnscan_parser.add_argument('url', type=str,
+                                 help='URL to vulnerabilities DB')
+    vulnscan_parser.add_argument('disk', type=str, help='path to disk image')
+    vulnscan_parser.add_argument('-c', '--concurrency', type=int, default=1,
+                                 help='amount of concurrent queries against DB')
 
     usnjrnl_parser = subparsers.add_parser(
         'usnjrnl', help='Parses the Update Sequence Number Journal file.')
