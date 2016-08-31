@@ -96,6 +96,8 @@ class VulnScanner:
                               vulnerabilities)
 
     def query_vulnerabilities(self, application):
+        self.logger.debug("Quering %s vulnerabilities.", application.name)
+
         name = application.name.lower()
         url = '/'.join((self._url, name, name))
 
@@ -113,9 +115,14 @@ class VulnScanner:
 def lookup_vulnerabilities(app_version, vulnerabilities):
     for vulnerability in vulnerabilities:
         for configuration in vulnerability['vulnerable_configuration']:
-            if app_version in configuration:
-                yield Vulnerability(vulnerability['id'],
-                                    vulnerability['summary'])
+            try:
+                vuln_version = configuration.split(':')[5]
+            except IndexError:
+                pass
+            else:
+                if app_version == vuln_version:
+                    yield Vulnerability(vulnerability['id'],
+                                        vulnerability['summary'])
 
 
 VulnApp = namedtuple('VulnApp', ('name',
