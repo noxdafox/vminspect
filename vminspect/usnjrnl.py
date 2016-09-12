@@ -55,7 +55,7 @@ def parse_journal_file(journal_file):
     for block in read_next_block(journal_file):
         block = remove_nullchars(block)
 
-        while len(block) > MAX_RECORD_SIZE:
+        while len(block) > MIN_RECORD_SIZE:
             header = RECORD_HEADER.unpack_from(block)
             size = header[0]
 
@@ -108,7 +108,21 @@ def usn_v3_record(header, record):
     length, major_version, minor_version = header
     fields = V3_RECORD.unpack_from(record, RECORD_HEADER.size)
 
-    raise NotImplementedError('Not implemented')
+    return UsnRecord(length,
+                     float('{}.{}'.format(major_version, minor_version)),
+                     fields[0],
+                     fields[1],
+                     fields[2],
+                     fields[3],
+                     fields[4],
+                     str(datetime(1601, 1, 1) +
+                         timedelta(microseconds=(fields[5] / 10))),
+                     unpack_flags(fields[6], REASONS),
+                     unpack_flags(fields[7], SOURCEINFO),
+                     fields[8],
+                     unpack_flags(fields[9], ATTRIBUTES),
+                     str(struct.unpack_from('{}s'.format(fields[10]).encode(),
+                                            record, fields[11])[0], 'utf16'))
 
 
 def usn_v4_record(header, record):
@@ -155,12 +169,12 @@ RECORD_HEADER = struct.Struct('Ihh')
 # https://msdn.microsoft.com/en-us/library/windows/desktop/aa365722%28v=vs.85%29.aspx
 V2_RECORD = struct.Struct('<LHHLHHqqIIIIhh')
 # https://msdn.microsoft.com/en-us/library/windows/desktop/hh802708%28v=vs.85%29.aspx
-V3_RECORD = struct.Struct('QQqqIIIIhh')  # TODO
+V3_RECORD = struct.Struct('<QQQQqqIIIIhh')
 # https://msdn.microsoft.com/en-us/library/windows/desktop/mt684964%28v=vs.85%29.aspx
 V4_RECORD = struct.Struct('QQqqIIIIhh')  # TODO
 
 
-MAX_RECORD_SIZE = RECORD_HEADER.size + max(V2_RECORD.size,
+MIN_RECORD_SIZE = RECORD_HEADER.size + min(V2_RECORD.size,
                                            V3_RECORD.size,
                                            V4_RECORD.size)
 
