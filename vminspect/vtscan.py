@@ -38,9 +38,7 @@ from itertools import chain, islice
 from vminspect.filesystem import FileSystem
 
 
-VT_REPORT_URL = 'https://www.virustotal.com/vtapi/v2/file/report'
-
-VTReport = namedtuple('VTReport', ('name', 'hash', 'detections'))
+VTReport = namedtuple('VTReport', ('path', 'hash', 'detections'))
 
 
 class VTScanner:
@@ -155,7 +153,7 @@ def vtquery(apikey, checksums):
             return response.json()
         elif response.status_code == 204:
             logging.debug("API key request rate limit reached, throttling.")
-            time.sleep(60)
+            time.sleep(VT_THROTTLE)
         else:
             raise RuntimeError("Response status code %s" % response.status_code)
 
@@ -166,3 +164,7 @@ def chunks(iterable, size=1):
 
     for element in iterator:
         yield chain([element], islice(iterator, size - 1))
+
+
+VT_THROTTLE = 60
+VT_REPORT_URL = 'https://www.virustotal.com/vtapi/v2/file/report'
