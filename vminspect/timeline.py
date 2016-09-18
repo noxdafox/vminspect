@@ -75,6 +75,28 @@ class FSTimeline:
         self.logger.debug("Sorting File System timeline events.")
         return sorted(events, key=lambda e: e.timestamp)
 
+    def file(self, path):
+        """Identifies the file type.
+
+        Caches the result to reduce overhead on duplicated events.
+
+        """
+        if path not in self._filetype_cache:
+            self._filetype_cache[path] = self._filesystem.file(path)
+
+        return self._filetype_cache[path]
+
+    def checksum(self, path):
+        """Identifies the file type.
+
+        Caches the result to reduce overhead on duplicated events.
+
+        """
+        if path not in self._checksum_cache:
+            self._checksum_cache[path] = self._filesystem.checksum(path)
+
+        return self._checksum_cache[path]
+
     def _visit_filesystem(self):
         """Walks through the filesystem content."""
         self.logger.debug("Parsing File System content.")
