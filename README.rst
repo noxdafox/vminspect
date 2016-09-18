@@ -169,7 +169,7 @@ Extract event timelines of NTFS disks. Installation of 7Zip on Windows 7.
 
 ::
 
-   vminspect timeline --identify --hash windows7.qcow2
+   vminspect usnjrnl_timeline --identify --hash windows7.qcow2
 
    {
      "file_reference_number": 60228,
