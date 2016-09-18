@@ -28,6 +28,15 @@
 # EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
+from vminspect.vtscan import VTScanner
+from vminspect.usnjrnl import usn_journal
+from vminspect.vulnscan import VulnScanner
+from vminspect.filesystem import FileSystem
+from vminspect.comparator import DiskComparator
+from vminspect.timeline import FSTimeline, NTFSTimeline
+from vminspect.winreg import RegistryHive, registry_root
+from vminspect.winreg import registries_path, user_registries_path
+
 __all__ = ['FileSystem',
            'RegistryHive',
            'registry_root',
@@ -35,16 +44,7 @@ __all__ = ['FileSystem',
            'user_registries_path',
            'usn_journal',
            'DiskComparator',
+           'FSTimeline',
            'NTFSTimeline',
            'VulnScanner',
            'VTScanner']
-
-
-from vminspect.vtscan import VTScanner
-from vminspect.usnjrnl import usn_journal
-from vminspect.vulnscan import VulnScanner
-from vminspect.timeline import NTFSTimeline
-from vminspect.filesystem import FileSystem
-from vminspect.comparator import DiskComparator
-from vminspect.winreg import RegistryHive, registry_root
-from vminspect.winreg import registries_path, user_registries_path

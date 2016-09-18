@@ -39,9 +39,9 @@ from tempfile import NamedTemporaryFile
 from vminspect.vtscan import VTScanner
 from vminspect.usnjrnl import usn_journal
 from vminspect.vulnscan import VulnScanner
-from vminspect.timeline import NTFSTimeline
 from vminspect.filesystem import FileSystem
 from vminspect.comparator import DiskComparator
+from vminspect.timeline import FSTimeline, NTFSTimeline
 from vminspect.winreg import RegistryHive, registry_root
 
 
@@ -66,6 +66,8 @@ def main():
         results = usnjrnl_command(arguments)
     elif arguments.name == 'timeline':
         results = timeline_command(arguments)
+    elif arguments.name == 'usnjrnl_timeline':
+        results = usnjrnl_timeline_command(arguments)
 
     print(json.dumps(results, indent=2))
 
@@ -189,8 +191,25 @@ def extract_usnjrnl(filesystem, path):
 def timeline_command(arguments):
     logger = logging.getLogger('timeline')
 
-    with NTFSTimeline(arguments.disk) as timeline:
+    with FSTimeline(arguments.disk) as timeline:
         events = [e._asdict() for e in timeline.timeline()]
+
+        if arguments.identify:
+            logger.debug("Gatering file types.")
+            events = identify_files(timeline, events)
+
+        if arguments.hash:
+            logger.debug("Gatering file hashes.")
+            events = calculate_hashes(timeline, events)
+
+    return events
+
+
+def usnjrnl_timeline_command(arguments):
+    logger = logging.getLogger('usnjrnl_timeline')
+
+    with NTFSTimeline(arguments.disk) as timeline:
+        events = [e._asdict() for e in timeline.usnjrnl_timeline()]
 
         if arguments.identify:
             logger.debug("Gatering file types.")
@@ -332,17 +351,32 @@ def parse_arguments():
     usnjrnl_parser.add_argument('-d', '--disk', type=str, default=None,
                                 help='path to disk image')
 
-    timeline_parser = subparsers.add_parser(
-        'timeline', help='Builds the event timeline of an NTFS disk.')
+    timeline_parser = subparsers.add_parser('timeline',
+                                            help="""Parses the disk content
+                                            to build a timeline of events.""")
     timeline_parser.add_argument('disk', type=str, help='path to disk image')
-    timeline_parser.add_argument('-i', '--identify', action='store_true',
-                                 default=False, help='report file types')
+    timeline_parser.add_argument('-i', '--identify', default=False,
+                                 action='store_true', help='report file types')
     timeline_parser.add_argument('-s', '--hash', action='store_true',
                                  default=False, help='report file hash (SHA1)')
-    timeline_parser.add_argument('-e', '--extract', type=str, default='',
-                                 help='Extract created files into path')
-    timeline_parser.add_argument('-r', '--recover', type=str, default='',
-                                 help='Try recovering deleted files')
+
+    usnjrnl_timeline_parser = subparsers.add_parser(
+        'usnjrnl_timeline', help="""Parses the NTFS Update Sequence Number
+        Journal to build a timeline of events.""")
+    usnjrnl_timeline_parser.add_argument('disk', type=str,
+                                         help='path to disk image')
+    usnjrnl_timeline_parser.add_argument('-i', '--identify', default=False,
+                                         action='store_true',
+                                         help='report file types')
+    usnjrnl_timeline_parser.add_argument('-s', '--hash', action='store_true',
+                                         default=False,
+                                         help='report file hash (SHA1)')
+    usnjrnl_timeline_parser.add_argument('-e', '--extract', type=str,
+                                         default='',
+                                         help='Extract created files into path')
+    usnjrnl_timeline_parser.add_argument('-r', '--recover', type=str,
+                                         default='',
+                                         help='Try recovering deleted files')
 
     return parser.parse_args()
 

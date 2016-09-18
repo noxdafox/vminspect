@@ -32,6 +32,7 @@
 
 import ntpath
 import logging
+from datetime import timedelta
 from itertools import chain, groupby
 from tempfile import NamedTemporaryFile
 from collections import defaultdict, namedtuple
@@ -40,11 +41,72 @@ from vminspect.filesystem import FileSystem
 from vminspect.usnjrnl import CorruptedUsnRecord, usn_journal
 
 
-Event = namedtuple('Event', ('file_reference_number', 'path', 'size',
-                             'allocated', 'timestamp', 'changes', 'attributes'))
+class FSTimeline:
+    def __init__(self, disk):
+        self._disk = disk
+        self._filesystem = None
+        self._filetype_cache = {}
+        self._checksum_cache = {}
+        self.logger = logging.getLogger(
+            "%s.%s" % (self.__module__, self.__class__.__name__))
+
+    def __enter__(self):
+        self._filesystem = FileSystem(self._disk)
+        self._filesystem.mount()
+
+        return self
+
+    def __exit__(self, *_):
+        self._filesystem.umount()
+
+    def __getattr__(self, attr):
+        return getattr(self._filesystem, attr)
+
+    def timeline(self):
+        self.logger.debug("Extracting File System timeline events.")
+        events = tuple(Event(d.inode, d.path, d.size, d.allocated, t, r)
+                       for d in self._visit_filesystem()
+                       for t, r in ((d.atime, 'access'),
+                                    (d.mtime, 'change'),
+                                    (d.ctime, 'attribute_change'),
+                                    (d.crtime, 'creation'))
+                       if t > 0)
+
+        self.logger.debug("Sorting File System timeline events.")
+        return sorted(events, key=lambda e: e.timestamp)
+
+    def _visit_filesystem(self):
+        """Walks through the filesystem content."""
+        self.logger.debug("Parsing File System content.")
+
+        root_partition = self._filesystem.guestfs.inspect_get_roots()[0]
+
+        yield from self._root_dirent()
+
+        for entry in self._filesystem.guestfs.filesystem_walk(root_partition):
+            yield Dirent(
+                entry['tsk_inode'],
+                self._filesystem.path('/' + entry['tsk_name']),
+                entry['tsk_size'], entry['tsk_type'],
+                True if entry['tsk_flags'] & TSK_ALLOC else False,
+                timestamp(entry['tsk_atime_sec'], entry['tsk_atime_nsec']),
+                timestamp(entry['tsk_mtime_sec'], entry['tsk_mtime_nsec']),
+                timestamp(entry['tsk_ctime_sec'], entry['tsk_ctime_nsec']),
+                timestamp(entry['tsk_crtime_sec'], entry['tsk_crtime_nsec']))
+
+    def _root_dirent(self):
+        """Returns the root folder dirent as filesystem_walk API doesn't."""
+        fstat = self._filesystem.stat('/')
+
+        yield Dirent(fstat['ino'], self._filesystem.path('/'),
+                     fstat['size'], 'd', True,
+                     timestamp(fstat['atime'], 0),
+                     timestamp(fstat['mtime'], 0),
+                     timestamp(fstat['ctime'], 0),
+                     0)
 
 
-class NTFSTimeline(FileSystem):
+class NTFSTimeline(FSTimeline):
     """Inspect NTFS filesystem in order to extract a timeline of events
     containing the information related to files/directories changes.
 
@@ -52,15 +114,23 @@ class NTFSTimeline(FileSystem):
       https://github.com/noxdafox/libguestfs/tree/forensics
 
     """
-    def __init__(self, disk_path):
-        super().__init__(disk_path)
-        self.logger = logging.getLogger(
-            "%s.%s" % (self.__module__, self.__class__.__name__))
+    def __init__(self, disk):
+        super().__init__(disk)
 
-    def timeline(self):
+    def __enter__(self):
+        super().__enter__()
+
+        if self._filesystem.osname != 'windows':
+            self._filesystem.umount()
+
+            raise RuntimeError("Filesystem is not NTFS.")
+
+        return self
+
+    def usnjrnl_timeline(self):
         """Iterates over the changes occurred within the filesystem.
 
-        Yields Event namedtuples containing:
+        Yields UsnJrnlEvent namedtuples containing:
 
             file_reference_number: known in Unix FS as inode.
             path: full path of the file.
@@ -71,53 +141,29 @@ class NTFSTimeline(FileSystem):
             attributes: list of file attributes.
 
         """
+        content = defaultdict(list)
+
         self.logger.debug("Extracting Update Sequence Number journal.")
         journal = self._read_journal()
 
         self.logger.debug("Parsing File System content.")
-        content = self._visit_filesystem()
+        for dirent in self._visit_filesystem():
+            content[dirent.inode].append(dirent)
 
         self.logger.debug("Generating timeline.")
         yield from generate_timeline(journal, content)
 
     def _read_journal(self):
         """Extracts the USN journal from the disk and parses its content."""
-        root = self.guestfs.inspect_get_roots()[0]
-        inode = self.stat('C:\\$Extend\\$UsnJrnl')['ino']
+        root = self._filesystem.guestfs.inspect_get_roots()[0]
+        inode = self._filesystem.stat('C:\\$Extend\\$UsnJrnl')['ino']
 
         with NamedTemporaryFile(buffering=0) as tempfile:
-            self.guestfs.download_inode(root, inode, tempfile.name)
+            self._filesystem.guestfs.download_inode(root, inode, tempfile.name)
 
             journal = usn_journal(tempfile.name)
 
             return parse_journal(journal)
-
-    def _visit_filesystem(self):
-        """Walks through the filesystem content and generates
-        a map inode -> file info.
-
-        """
-        content = defaultdict(list)
-        root_partition = self.guestfs.inspect_get_roots()[0]
-
-        inode, dirent = self._root_dirent()
-        content[inode].append(dirent)
-
-        for entry in self.guestfs.filesystem_walk(root_partition):
-            dirent = Dirent(self.path('/' + entry['tsk_name']),
-                            entry['tsk_size'],
-                            entry['tsk_type'],
-                            True if entry['tsk_flags'] & TSK_ALLOC else False)
-
-            content[entry['tsk_inode']].append(dirent)
-
-        return content
-
-    def _root_dirent(self):
-        """Returns the root folder dirent as filesystem_walk API doesn't."""
-        fstat = self.stat('C:\\')
-
-        return fstat['ino'], Dirent(self.path('/'), fstat['size'], 'd', True)
 
 
 def parse_journal(journal):
@@ -157,8 +203,9 @@ def generate_timeline(usnjrnl, content):
         try:
             dirent = lookup_dirent(event, content)
 
-            yield Event(event.inode, dirent.path, dirent.size, dirent.allocated,
-                        event.timestamp, event.changes, event.attributes)
+            yield UsnJrnlEvent(
+                dirent.inode, dirent.path, dirent.size, dirent.allocated,
+                event.timestamp, event.changes, event.attributes)
         except LookupError as error:
             LOGGER.debug(error)
 
@@ -171,15 +218,31 @@ def lookup_dirent(event, content):
     # try constructing the full path from the parent folder
     for dirent in content[event.parent_inode]:
         if dirent.type == 'd':
-            return Dirent(ntpath.join(dirent.path, event.name), -1, None, False)
+            return Dirent(event.inode, ntpath.join(dirent.path, event.name), -1,
+                          None, False, 0, 0, 0, 0)
     else:
         raise LookupError("File %s not found" % event.name)
 
 
+def timestamp(secs, nsecs):
+    delta = timedelta(seconds=secs) + timedelta(microseconds=(nsecs / 1000))
+
+    return delta.total_seconds()
+
+
 TSK_ALLOC = 0x01
 
+
+Event = namedtuple('Event',
+                   ('inode', 'path', 'size',
+                    'allocated', 'timestamp', 'reason'))
+UsnJrnlEvent = namedtuple('Event', ('file_reference_number', 'path', 'size',
+                                    'allocated', 'timestamp', 'changes',
+                                    'attributes'))
+
+Dirent = namedtuple('Dirent', ('inode', 'path', 'size', 'type', 'allocated',
+                               'atime', 'mtime', 'ctime', 'crtime'))
 JrnlEvent = namedtuple('JrnlEvent', ('inode', 'parent_inode', 'name',
                                      'timestamp', 'changes', 'attributes'))
-Dirent = namedtuple('Dirent', ('path', 'size', 'type', 'allocated'))
 
 LOGGER = logging.getLogger("%s" % (__name__))
