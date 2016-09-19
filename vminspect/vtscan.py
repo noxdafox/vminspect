@@ -69,6 +69,9 @@ class VTScanner:
     def __exit__(self, *_):
         self._filesystem.umount()
 
+    def __getattr__(self, attr):
+        return getattr(self._filesystem, attr)
+
     @property
     def apikey(self):
         return self._apikey

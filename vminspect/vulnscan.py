@@ -62,6 +62,9 @@ class VulnScanner:
     def __exit__(self, *_):
         self._filesystem.umount()
 
+    def __getattr__(self, attr):
+        return getattr(self._filesystem, attr)
+
     def scan(self, concurrency=1):
         """Iterates over the applications installed within the disk
         and queries the CVE DB to determine whether they are vulnerable.
