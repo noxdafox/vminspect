@@ -111,8 +111,8 @@ class VulnScanner:
 
     def applications(self):
         return (Application(a['app2_name'], a['app2_version'])
-                for a in self._filesystem.guestfs.inspect_list_applications2(
-                self._filesystem._root))
+                for a in self._filesystem.inspect_list_applications2(
+                        self._filesystem._root))
 
 
 def lookup_vulnerabilities(app_version, vulnerabilities):

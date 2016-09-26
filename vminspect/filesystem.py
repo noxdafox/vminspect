@@ -57,6 +57,9 @@ class FileSystem:
     def __exit__(self, *_):
         self.umount()
 
+    def __getattr__(self, attr):
+        return getattr(self._handler, attr)
+
     @property
     def osname(self):
         """Returns the Operating System name."""
@@ -70,11 +73,6 @@ class FileSystem:
                 self._handler.inspect_get_drive_mappings(self._root)[0][0])
         else:
             return self._handler.inspect_get_mountpoints(self._root)[0][0]
-
-    @property
-    def guestfs(self):
-        """Returns the GuestFS handler."""
-        return self._handler
 
     def mount(self, readonly=True):
         """Mounts the given disk.

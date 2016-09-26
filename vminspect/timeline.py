@@ -101,11 +101,11 @@ class FSTimeline:
         """Walks through the filesystem content."""
         self.logger.debug("Parsing File System content.")
 
-        root_partition = self._filesystem.guestfs.inspect_get_roots()[0]
+        root_partition = self._filesystem.inspect_get_roots()[0]
 
         yield from self._root_dirent()
 
-        for entry in self._filesystem.guestfs.filesystem_walk(root_partition):
+        for entry in self._filesystem.filesystem_walk(root_partition):
             yield Dirent(
                 entry['tsk_inode'],
                 self._filesystem.path('/' + entry['tsk_name']),
@@ -177,11 +177,11 @@ class NTFSTimeline(FSTimeline):
 
     def _read_journal(self):
         """Extracts the USN journal from the disk and parses its content."""
-        root = self._filesystem.guestfs.inspect_get_roots()[0]
+        root = self._filesystem.inspect_get_roots()[0]
         inode = self._filesystem.stat('C:\\$Extend\\$UsnJrnl')['ino']
 
         with NamedTemporaryFile(buffering=0) as tempfile:
-            self._filesystem.guestfs.download_inode(root, inode, tempfile.name)
+            self._filesystem.download_inode(root, inode, tempfile.name)
 
             journal = usn_journal(tempfile.name)
 

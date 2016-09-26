@@ -181,9 +181,9 @@ def parse_usnjrnl(usnjrnl, disk=None):
 
 def extract_usnjrnl(filesystem, path):
     with NamedTemporaryFile(buffering=0) as tempfile:
-        root = filesystem.guestfs.inspect_get_roots()[0]
+        root = filesystem.inspect_get_roots()[0]
         inode = filesystem.stat(path)['ino']
-        filesystem.guestfs.download_inode(root, inode, tempfile.name)
+        filesystem.download_inode(root, inode, tempfile.name)
 
         return [e._asdict() for e in usn_journal(tempfile.name)]
 
@@ -268,14 +268,14 @@ def extract_created_files(timeline, path, events):
 
 
 def extract_deleted_files(timeline, path, events):
-    root = timeline.guestfs.inspect_get_roots()[0]
+    root = timeline.inspect_get_roots()[0]
 
     for event in (e for e in events if 'FILE_DELETE' in e['changes']):
         inode = event['file_reference_number']
 
         try:
             with NamedTemporaryFile(buffering=0) as tempfile:
-                timeline.guestfs.download_inode(root, inode, tempfile.name)
+                timeline.download_inode(root, inode, tempfile.name)
 
                 event['recovered'] = True
                 event['hash'] = hashlib.sha1(tempfile.read()).hexdigest()
