@@ -33,6 +33,7 @@
 import ntpath
 import logging
 from datetime import timedelta
+from functools import lru_cache
 from itertools import chain, groupby
 from tempfile import NamedTemporaryFile
 from collections import defaultdict, namedtuple
@@ -75,27 +76,23 @@ class FSTimeline:
         self.logger.debug("Sorting File System timeline events.")
         return sorted(events, key=lambda e: e.timestamp)
 
+    @lru_cache(maxsize=None)
     def file(self, path):
         """Identifies the file type.
 
         Caches the result to reduce overhead on duplicated events.
 
         """
-        if path not in self._filetype_cache:
-            self._filetype_cache[path] = self._filesystem.file(path)
+        return self._filesystem.file(path)
 
-        return self._filetype_cache[path]
-
+    @lru_cache(maxsize=None)
     def checksum(self, path):
         """Identifies the file type.
 
         Caches the result to reduce overhead on duplicated events.
 
         """
-        if path not in self._checksum_cache:
-            self._checksum_cache[path] = self._filesystem.checksum(path)
-
-        return self._checksum_cache[path]
+        return self._filesystem.checksum(path)
 
     def _visit_filesystem(self):
         """Walks through the filesystem content."""
