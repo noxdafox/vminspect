@@ -258,7 +258,8 @@ def extract_created_files(timeline, path, events):
             else:
                 sha_hash = timeline.checksum(event['path'])
             source = event['path']
-            destination = Path(path, sha_hash)
+            name = Path(posix_path(event['path'])).name
+            destination = Path(path, '_'.join((sha_hash, name)))
 
             if not destination.exists():
                 timeline.download(source, str(destination))
@@ -276,11 +277,14 @@ def extract_deleted_files(timeline, path, events):
             with NamedTemporaryFile(buffering=0) as tempfile:
                 timeline.download_inode(root, inode, tempfile.name)
 
-                event['recovered'] = True
-                event['hash'] = hashlib.sha1(tempfile.read()).hexdigest()
-                destination = Path(path, event['hash'])
+                name = Path(posix_path(event['path'])).name
+                sha_hash = hashlib.sha1(tempfile.read()).hexdigest()
+                destination = Path(path, '_'.join((sha_hash, name)))
 
                 shutil.copy(tempfile.name, str(destination))
+
+                event['hash'] = sha_hash
+                event['recovered'] = True
         except RuntimeError:
             event['recovered'] = False
 
