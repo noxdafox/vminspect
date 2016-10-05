@@ -37,7 +37,7 @@ def read(fname):
 
 setup(
     name="vminspect",
-    version="0.0.15",
+    version="0.0.16",
     author="Matteo Cafasso",
     author_email="noxdafox@gmail.com",
     description=("Virtual Machine disk inspection library"),
