@@ -31,10 +31,10 @@
 """Module for comparing Virtual Machine Disk Images."""
 
 
-import os
 import logging
 from itertools import chain
 from pebble import process, thread
+from pathlib import Path, PurePath
 from tempfile import NamedTemporaryFile
 
 from vminspect.filesystem import FileSystem
@@ -151,7 +151,7 @@ class DiskComparator:
                                   concurrent=concurrent)
 
     def _extract_files(self, disk, files, path):
-        path = os.path.join(path, 'extracted_files')
+        path = str(PurePath(path, 'extracted_files'))
 
         makedirs(path)
 
@@ -251,9 +251,11 @@ def extract_files(filesystem, files, path):
 
     for file_to_extract in files:
         source = file_to_extract['path']
-        destination = os.path.join(path, file_to_extract['sha1'])
+        destination = Path(path, file_to_extract['sha1'])
 
-        if not os.path.exists(destination):
+        if not destination.exists():
+            destination = str(destination)
+
             try:
                 filesystem.download(source, destination)
                 extracted_files[file_to_extract['sha1']] = destination
@@ -413,5 +415,7 @@ def parse_registries(filesystem, registries):
 
 def makedirs(path):
     """Creates the directory tree if non existing."""
-    if not os.path.exists(path):
-        os.makedirs(path)
+    path = Path(path)
+
+    if not path.exists():
+        path.mkdir(parents=True)

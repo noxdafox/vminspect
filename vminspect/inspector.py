@@ -27,21 +27,20 @@
 # OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
 # EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-
-import os
 import json
 import shutil
 import hashlib
 import logging
 import argparse
+from pathlib import Path
 from tempfile import NamedTemporaryFile
 
 from vminspect.vtscan import VTScanner
 from vminspect.usnjrnl import usn_journal
 from vminspect.vulnscan import VulnScanner
-from vminspect.filesystem import FileSystem
 from vminspect.comparator import DiskComparator
 from vminspect.timeline import FSTimeline, NTFSTimeline
+from vminspect.filesystem import FileSystem, posix_path
 from vminspect.winreg import RegistryHive, registry_root
 
 
@@ -259,10 +258,10 @@ def extract_created_files(timeline, path, events):
             else:
                 sha_hash = timeline.checksum(event['path'])
             source = event['path']
-            destination = os.path.join(path, sha_hash)
+            destination = Path(path, sha_hash)
 
-            if not os.path.exists(destination):
-                timeline.download(source, destination)
+            if not destination.exists():
+                timeline.download(source, str(destination))
         except RuntimeError:
             pass
 
@@ -279,9 +278,9 @@ def extract_deleted_files(timeline, path, events):
 
                 event['recovered'] = True
                 event['hash'] = hashlib.sha1(tempfile.read()).hexdigest()
-                destination = os.path.join(path, event['hash'])
+                destination = Path(path, event['hash'])
 
-                shutil.copy(tempfile.name, destination)
+                shutil.copy(tempfile.name, str(destination))
         except RuntimeError:
             event['recovered'] = False
 
