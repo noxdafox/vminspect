@@ -37,6 +37,7 @@ from tempfile import NamedTemporaryFile
 
 from vminspect.vtscan import VTScanner
 from vminspect.usnjrnl import usn_journal
+from vminspect.winevtx import WinEventLog
 from vminspect.vulnscan import VulnScanner
 from vminspect.comparator import DiskComparator
 from vminspect.timeline import FSTimeline, NTFSTimeline
@@ -67,6 +68,9 @@ def main():
         results = timeline_command(arguments)
     elif arguments.name == 'usnjrnl_timeline':
         results = usnjrnl_timeline_command(arguments)
+    elif arguments.name == 'eventlog':
+        eventlog_command(arguments)
+        return
 
     print(json.dumps(results, indent=2))
 
@@ -289,6 +293,11 @@ def extract_deleted_files(timeline, path, events):
             event['recovered'] = False
 
 
+def eventlog_command(arguments):
+    with WinEventLog(arguments.disk) as eventlog:
+        print('\n'.join(eventlog.eventlog(arguments.path)))
+
+
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Inspects VM disk images.')
     parser.add_argument('-d', '--debug', action='store_true', default=False,
@@ -380,6 +389,11 @@ def parse_arguments():
     usnjrnl_timeline_parser.add_argument('-r', '--recover', type=str,
                                          default='',
                                          help='Try recovering deleted files')
+
+    eventlog_parser = subparsers.add_parser(
+        'eventlog', help="""Parses the given Windows Event Log.""")
+    eventlog_parser.add_argument('disk', type=str, help='path to disk image')
+    eventlog_parser.add_argument('path', type=str, help='path to event log')
 
     return parser.parse_args()
 
