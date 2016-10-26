@@ -52,27 +52,10 @@ def main():
     logging.basicConfig(level=arguments.debug and logging.DEBUG or logging.INFO)
     logging.getLogger('requests').setLevel(logging.WARNING)
 
-    if arguments.name == 'list':
-        results = list_files_command(arguments)
-    elif arguments.name == 'compare':
-        results = compare_command(arguments)
-    elif arguments.name == 'registry':
-        results = registry_command(arguments)
-    elif arguments.name == 'vtscan':
-        results = vtscan_command(arguments)
-    elif arguments.name == 'vulnscan':
-        results = vulnscan_command(arguments)
-    elif arguments.name == 'usnjrnl':
-        results = usnjrnl_command(arguments)
-    elif arguments.name == 'timeline':
-        results = timeline_command(arguments)
-    elif arguments.name == 'usnjrnl_timeline':
-        results = usnjrnl_timeline_command(arguments)
-    elif arguments.name == 'eventlog':
-        eventlog_command(arguments)
-        return
+    results = COMMANDS[arguments.name](arguments)
 
-    print(json.dumps(results, indent=2))
+    if results is not None:
+        print(json.dumps(results, indent=2))
 
 
 def list_files_command(arguments):
@@ -405,6 +388,17 @@ def parse_arguments():
     eventlog_parser.add_argument('path', type=str, help='path to event log')
 
     return parser.parse_args()
+
+
+COMMANDS = {'list': list_files_command,
+            'compare': compare_command,
+            'registry': registry_command,
+            'vtscan': vtscan_command,
+            'vulnscan': vulnscan_command,
+            'usnjrnl': usnjrnl_command,
+            'timeline': timeline_command,
+            'usnjrnl_timeline': usnjrnl_timeline_command,
+            'eventlog': eventlog_command}
 
 
 if __name__ == '__main__':
