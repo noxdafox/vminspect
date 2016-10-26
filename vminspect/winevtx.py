@@ -28,25 +28,53 @@
 # EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-from vminspect.vtscan import VTScanner
-from vminspect.usnjrnl import usn_journal
-from vminspect.winevtx import WinEventLog
-from vminspect.vulnscan import VulnScanner
-from vminspect.filesystem import FileSystem
-from vminspect.comparator import DiskComparator
-from vminspect.timeline import FSTimeline, NTFSTimeline
-from vminspect.winreg import RegistryHive, registry_root
-from vminspect.winreg import registries_path, user_registries_path
+"""Module for parsing Windows Event Log files."""
 
-__all__ = ['FileSystem',
-           'RegistryHive',
-           'registry_root',
-           'registries_path',
-           'user_registries_path',
-           'usn_journal',
-           'DiskComparator',
-           'FSTimeline',
-           'NTFSTimeline',
-           'VulnScanner',
-           'VTScanner',
-           'WinEventLog']
+
+import logging
+from tempfile import NamedTemporaryFile
+
+from Evtx.Evtx import FileHeader
+from Evtx.Views import evtx_file_xml_view
+from vminspect.filesystem import FileSystem
+
+
+class WinEventLog:
+    """WinEventLog class.
+
+    Allows to retrieve the Events contained within Windows Event Log files.
+
+    """
+    def __init__(self, disk):
+        self._disk = disk
+        self._filesystem = None
+        self.logger = logging.getLogger(
+            "%s.%s" % (self.__module__, self.__class__.__name__))
+
+    def __enter__(self):
+        self._filesystem = FileSystem(self._disk)
+        self._filesystem.mount()
+
+        return self
+
+    def __exit__(self, *_):
+        self._filesystem.umount()
+
+    def __getattr__(self, attr):
+        return getattr(self._filesystem, attr)
+
+    def eventlog(self, path):
+        """Iterates over the Events contained within the log at the given path.
+
+        For each Event, yields a XML string.
+
+        """
+        self.logger.debug("Parsing Event log file %s.", path)
+
+        with NamedTemporaryFile(buffering=0) as tempfile:
+            self._filesystem.download(path, tempfile.name)
+
+            file_header = FileHeader(tempfile.read(), 0)
+
+            for xml_string, _ in evtx_file_xml_view(file_header):
+                yield xml_string
