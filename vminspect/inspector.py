@@ -254,6 +254,11 @@ def calculate_hashes(timeline, events):
 
 
 def extract_created_files(timeline, path, events):
+    path = Path(path)
+
+    if not path.exists():
+        path.mkdir(parents=True)
+
     for event in (e for e in events
                   if 'FILE_CREATE' in e['changes'] and e['allocated']):
         try:
@@ -272,7 +277,11 @@ def extract_created_files(timeline, path, events):
 
 
 def extract_deleted_files(timeline, path, events):
+    path = Path(path)
     root = timeline.inspect_get_roots()[0]
+
+    if not path.exists():
+        path.mkdir(parents=True)
 
     for event in (e for e in events if 'FILE_DELETE' in e['changes']):
         inode = event['file_reference_number']
