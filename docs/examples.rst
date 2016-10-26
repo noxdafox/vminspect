@@ -175,3 +175,29 @@ Extract event timelines of NTFS disks. Installation of 7Zip on Windows 7.
      "type": "PE32+ executable (console) x86-64, for MS Windows",
      "hash": "7447eb123655792fede586ad049ac737effa9e6c"
    }
+
+Parse Windows Event Log files.
+
+::
+
+   vminspect eventlog windows7.qcow2 C:\\Windows\\System32\\winevt\\Logs\\Security.evtx
+
+   <Event xmlns=" ... "><System><Provider Name=" ... " Guid="{ ... }"></Provider>
+   <EventID Qualifiers="">4608</EventID>
+   <Version>0</Version>
+   <Level>0</Level>
+   <Task>12288</Task>
+   <Opcode>0</Opcode>
+   <Keywords>0x80200000000000</Keywords>
+   <TimeCreated SystemTime="2015-04-09 22:12:34.203125"></TimeCreated>
+   <EventRecordID>1</EventRecordID>
+   <Correlation ActivityID="" RelatedActivityID=""></Correlation>
+   <Execution ProcessID="448" ThreadID="452"></Execution>
+   <Channel>Security</Channel>
+   <Computer>37L4247F27-25</Computer>
+   <Security UserID=""></Security>
+   </System>
+   <EventData></EventData>
+   </Event>
+
+   ...
