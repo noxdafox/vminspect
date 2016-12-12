@@ -33,7 +33,7 @@
 
 import logging
 from itertools import chain
-from pebble import process, thread
+from pebble import concurrent
 from pathlib import Path, PurePath
 from tempfile import NamedTemporaryFile
 
@@ -187,11 +187,11 @@ def compare_filesystems(fs0, fs1, concurrent=False):
 
     """
     if concurrent:
-        task0 = thread.concurrent(target=visit_filesystem, args=(fs0, ))
-        task1 = thread.concurrent(target=visit_filesystem, args=(fs1, ))
+        future0 = concurrent_visit_filesystem(fs0)
+        future1 = concurrent_visit_filesystem(fs1)
 
-        files0 = task0.get()
-        files1 = task1.get()
+        files0 = future0.result()
+        files1 = future1.result()
     else:
         files0 = visit_filesystem(fs0)
         files1 = visit_filesystem(fs1)
@@ -285,11 +285,11 @@ def compare_registries(fs0, fs1, concurrent=False):
     hives = compare_hives(fs0, fs1)
 
     if concurrent:
-        task0 = process.concurrent(target=parse_registries, args=(fs0, hives))
-        task1 = process.concurrent(target=parse_registries, args=(fs1, hives))
+        future0 = concurrent_parse_registries(fs0, hives)
+        future1 = concurrent_parse_registries(fs1, hives)
 
-        registry0 = task0.get()
-        registry1 = task1.get()
+        registry0 = future0.result()
+        registry1 = future1.result()
     else:
         registry0 = parse_registries(fs0, hives)
         registry1 = parse_registries(fs1, hives)
@@ -393,6 +393,11 @@ def visit_filesystem(filesystem):
     return dict(filesystem.checksums('/'))
 
 
+@concurrent.thread
+def concurrent_visit_filesystem(filesystem):
+    return visit_filesystem(filesystem)
+
+
 def parse_registries(filesystem, registries):
     """Returns a dictionary with the content of the given registry hives.
 
@@ -411,6 +416,11 @@ def parse_registries(filesystem, registries):
             results.update(dict(registry.keys()))
 
     return results
+
+
+@concurrent.process(timeout=300)
+def concurrent_parse_registries(filesystem, registries):
+    return parse_registries(filesystem, registries)
 
 
 def makedirs(path):
