@@ -305,20 +305,20 @@ def registry_comparison(registry0, registry1):
                   'deleted_values': {},
                   'modified_values': {}}
 
-    for key, values in registry1.items():
+    for key, info in registry1.items():
         if key in registry0:
-            if values != registry0[key]:
-                created, deleted, modified = compare_values(registry0[key],
-                                                            values)
+            if info[1] != registry0[key][1]:
+                created, deleted, modified = compare_values(
+                    registry0[key][1], info[1])
 
                 if created:
-                    comparison['created_values'][key] = created
+                    comparison['created_values'][key] = (info[0], created)
                 if deleted:
-                    comparison['deleted_values'][key] = deleted
+                    comparison['deleted_values'][key] = (info[0], deleted)
                 if modified:
-                    comparison['modified_values'][key] = modified
+                    comparison['modified_values'][key] = (info[0], modified)
         else:
-            comparison['created_keys'][key] = values
+            comparison['created_keys'][key] = info
 
     for key in registry0.keys():
         if key not in registry1:
@@ -413,7 +413,8 @@ def parse_registries(filesystem, registries):
             registry = RegistryHive(tempfile.name)
             registry.rootkey = registry_root(path)
 
-            results.update(dict(registry.keys()))
+            results.update({k.path: (k.timestamp, k.values)
+                            for k in registry.keys()})
 
     return results
 

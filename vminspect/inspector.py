@@ -33,6 +33,7 @@ import hashlib
 import logging
 import argparse
 from pathlib import Path
+from collections import OrderedDict
 from tempfile import NamedTemporaryFile
 
 from vminspect.vtscan import VTScanner
@@ -113,15 +114,11 @@ def compare_disks(disk1, disk2, identify=False, size=False, registry=False,
 
 
 def registry_command(arguments):
-    return parse_registry(arguments.hive, disk=arguments.disk)
+    return parse_registry(
+        arguments.hive, disk=arguments.disk, sort=arguments.sort)
 
 
-def parse_registry(hive, disk=None):
-    """Parses the registry hive's content and returns a dictionary.
-
-        {"RootKey\\Key\\...": (("ValueKey", "ValueType", ValueValue), ... )}
-
-    """
+def parse_registry(hive, disk=None, sort=False):
     if disk is not None:
         with FileSystem(disk) as filesystem:
             registry = extract_registry(filesystem, hive)
@@ -130,7 +127,12 @@ def parse_registry(hive, disk=None):
 
     registry.rootkey = registry_root(hive)
 
-    return dict(registry.keys())
+    if sort:
+        keys = sorted((k for k in registry.keys()), key=lambda k: k.timestamp)
+
+        return OrderedDict((k.path, (k.timestamp, k.values)) for k in keys)
+    else:
+        return {k.path: (k.timestamp, k.values) for k in registry.keys()}
 
 
 def extract_registry(filesystem, path):
@@ -328,6 +330,9 @@ def parse_arguments():
     registry_parser = subparsers.add_parser(
         'registry', help='Lists the content of a registry file.')
     registry_parser.add_argument('hive', type=str, help='path to hive file')
+    registry_parser.add_argument('-s', '--sort', action='store_true',
+                                 default=False,
+                                 help='sort the keys by timestamp')
     registry_parser.add_argument('-d', '--disk', type=str, default=None,
                                  help='path to disk image')
 
