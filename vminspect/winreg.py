@@ -119,11 +119,12 @@ class RegistryHive(Hivex):
         except RuntimeError:
             value_data = self._value_data(value)
 
-        return self.value_key(value), value_type, str(value_data)
+        return self.value_key(value), value_type, value_data
 
     def _value_data(self, value):
         """Parses binary and unidentified values."""
-        return codecs.encode(self.value_value(value)[1], 'base64')
+        return codecs.decode(
+            codecs.encode(self.value_value(value)[1], 'base64'), 'utf8')
 
 
 def registry_root(path):
