@@ -69,6 +69,8 @@ class DiskComparator:
 
         Generates the following report:
 
+        ::
+
             {'created_files': [{'path': '/file/in/disk1/not/in/disk0',
                                 'sha1': 'sha1_of_the_file'}],
              'deleted_files': [{'path': '/file/in/disk0/not/in/disk1',
