@@ -29,6 +29,8 @@ Pebble: https://pypi.python.org/pypi/Pebble
 
 Requests: https://pypi.python.org/pypi/requests/
 
+Python Evtx: https://pypi.python.org/pypi/python-evtx/
+
 Documentation
 -------------
 
