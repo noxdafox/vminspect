@@ -102,9 +102,8 @@ class RegistryHive(Hivex):
     def _visit_registry(self, node, path):
         path = ntpath.join(path, self.node_name(node))
         values = (self._parse_value(value) for value in self.node_values(node))
-        timestamp = str(
-            datetime(1601, 1, 1) +
-            timedelta(microseconds=(self.node_timestamp(node) / 10)))
+        timestamp = (datetime(1601, 1, 1) + timedelta(
+            microseconds=(self.node_timestamp(node) / 10))).isoformat(' ')
 
         yield WinRegKey(path, timestamp, tuple(values))
 

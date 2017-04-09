@@ -93,8 +93,8 @@ def usn_v2_record(header, record):
                      fields[3] | fields[4] << 16,  # 6 bytes little endian mft
                      fields[5],  # 2 bytes little endian mft sequence
                      fields[6],
-                     str(datetime(1601, 1, 1) +
-                         timedelta(microseconds=(fields[7] / 10))),
+                     (datetime(1601, 1, 1) +
+                      timedelta(microseconds=(fields[7] / 10))).isoformat(' '),
                      unpack_flags(fields[8], REASONS),
                      unpack_flags(fields[9], SOURCEINFO),
                      fields[10],
@@ -115,8 +115,8 @@ def usn_v3_record(header, record):
                      fields[2],
                      fields[3],
                      fields[4],
-                     str(datetime(1601, 1, 1) +
-                         timedelta(microseconds=(fields[5] / 10))),
+                     (datetime(1601, 1, 1) +
+                      timedelta(microseconds=(fields[5] / 10))).isoformat(' '),
                      unpack_flags(fields[6], REASONS),
                      unpack_flags(fields[7], SOURCEINFO),
                      fields[8],
