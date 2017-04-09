@@ -69,6 +69,7 @@ On the Windows Registry is visible how the malware ensures its execution at mach
      "registry": {
        "created_keys": {
          "\\HKLM\\ControlSet001\\services\\\u202eetadpug": [
+           "2017-04-10 04:50:05.659180",
            ["ImagePath", "REG_SZ", "C:\\Program Files (x86)\\Google\\Desktop\\Install\\ ... \\GoogleUpdate.exe"],
            ["DisplayName", "REG_SZ", "Google Update Service (gupdate)"],
            ["Start", "REG_DWORD", "2"],
