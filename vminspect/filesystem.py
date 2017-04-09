@@ -32,8 +32,10 @@
 
 import os
 import re
-from guestfs import GuestFS
+
 from tempfile import NamedTemporaryFile
+
+from guestfs import GuestFS
 
 
 class FileSystem:
@@ -47,7 +49,8 @@ class FileSystem:
     def __init__(self, disk_path):
         self._root = None
         self._handler = GuestFS()
-        self._disk_path = disk_path
+
+        self.disk_path = disk_path
 
     def __enter__(self):
         self.mount()
@@ -79,7 +82,7 @@ class FileSystem:
         It must be called before any other method.
 
         """
-        self._handler.add_drive_opts(self._disk_path, readonly=True)
+        self._handler.add_drive_opts(self.disk_path, readonly=True)
         self._handler.launch()
 
         for mountpoint, device in self._inspect_disk():
