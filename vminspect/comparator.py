@@ -37,8 +37,8 @@ from pebble import concurrent
 from pathlib import Path, PurePath
 from tempfile import NamedTemporaryFile
 
-from vminspect.filesystem import FileSystem
 from vminspect.winreg import RegistryHive, registry_root
+from vminspect.filesystem import FileSystem, hash_filesystem
 from vminspect.winreg import user_registries_path, registries_path
 
 
@@ -189,14 +189,14 @@ def compare_filesystems(fs0, fs1, concurrent=False):
 
     """
     if concurrent:
-        future0 = concurrent_visit_filesystem(fs0)
-        future1 = concurrent_visit_filesystem(fs1)
+        future0 = concurrent_hash_filesystem(fs0)
+        future1 = concurrent_hash_filesystem(fs1)
 
         files0 = future0.result()
         files1 = future1.result()
     else:
-        files0 = visit_filesystem(fs0)
-        files1 = visit_filesystem(fs1)
+        files0 = hash_filesystem(fs0)
+        files1 = hash_filesystem(fs1)
 
     return file_comparison(files0, files1)
 
@@ -384,20 +384,9 @@ def files_size(fs0, fs1, files):
     return files
 
 
-def visit_filesystem(filesystem):
-    """Utility function for running the files iterator at once.
-
-    Returns a dictionary.
-
-        {'/path/on/filesystem': 'file_hash'}
-
-    """
-    return dict(filesystem.checksums('/'))
-
-
 @concurrent.thread
-def concurrent_visit_filesystem(filesystem):
-    return visit_filesystem(filesystem)
+def concurrent_hash_filesystem(filesystem):
+    return hash_filesystem(filesystem)
 
 
 def parse_registries(filesystem, registries):

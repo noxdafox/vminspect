@@ -42,8 +42,8 @@ from vminspect.winevtx import WinEventLog
 from vminspect.vulnscan import VulnScanner
 from vminspect.comparator import DiskComparator
 from vminspect.timeline import FSTimeline, NTFSTimeline
-from vminspect.filesystem import FileSystem, posix_path
 from vminspect.winreg import RegistryHive, registry_root
+from vminspect.filesystem import FileSystem, hash_filesystem, posix_path
 
 
 def main():
@@ -69,8 +69,8 @@ def list_files(disk, identify=False, size=False):
 
     with FileSystem(disk) as filesystem:
         logger.debug("Listing files.")
-        files = [{'path': path, 'sha1': digest}
-                 for path, digest in filesystem.checksums('/')]
+
+        files = hash_filesystem(filesystem)
 
         if identify:
             logger.debug("Gatering file types.")
