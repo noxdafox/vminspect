@@ -165,7 +165,6 @@ class NTFSTimeline(FSTimeline):
         self.logger.debug("Extracting Update Sequence Number journal.")
         journal = self._read_journal()
 
-        self.logger.debug("Parsing File System content.")
         for dirent in self._visit_filesystem():
             content[dirent.inode].append(dirent)
 
