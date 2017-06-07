@@ -160,16 +160,17 @@ class NTFSTimeline(FSTimeline):
             attributes: list of file attributes.
 
         """
-        content = defaultdict(list)
+        filesystem_content = defaultdict(list)
 
         self.logger.debug("Extracting Update Sequence Number journal.")
+
         journal = self._read_journal()
 
         for dirent in self._visit_filesystem():
-            content[dirent.inode].append(dirent)
+            filesystem_content[dirent.inode].append(dirent)
 
         self.logger.debug("Generating timeline.")
-        yield from generate_timeline(journal, content)
+        yield from generate_timeline(journal, filesystem_content)
 
     def _read_journal(self):
         """Extracts the USN journal from the disk and parses its content."""
@@ -212,14 +213,18 @@ def journal_event(events):
                      list(reasons), list(attributes))
 
 
-def generate_timeline(usnjrnl, content):
+def generate_timeline(usnjrnl, filesystem_content):
     """Aggregates the data collected from the USN journal
     and the filesystem content.
 
     """
+    journal_content = defaultdict(list)
+    for event in usnjrnl:
+        journal_content[event.inode].append(event)
+
     for event in usnjrnl:
         try:
-            dirent = lookup_dirent(event, content)
+            dirent = lookup_dirent(event, filesystem_content, journal_content)
 
             yield UsnJrnlEvent(
                 dirent.inode, dirent.path, dirent.size, dirent.allocated,
@@ -228,18 +233,42 @@ def generate_timeline(usnjrnl, content):
             LOGGER.debug(error)
 
 
-def lookup_dirent(event, content):
-    for dirent in content[event.inode]:
+def lookup_dirent(event, filesystem_content, journal_content):
+    """Lookup the dirent given a journal event."""
+    for dirent in filesystem_content[event.inode]:
         if dirent.path.endswith(event.name):
             return dirent
 
-    # try constructing the full path from the parent folder
-    for dirent in content[event.parent_inode]:
-        if dirent.type == 'd':
-            return Dirent(event.inode, ntpath.join(dirent.path, event.name), -1,
-                          None, False, 0, 0, 0, 0)
-    else:
-        raise LookupError("File %s not found" % event.name)
+    path = lookup_folder(event, filesystem_content)
+    if path is not None:
+        return Dirent(event.inode, path, -1, None, False, 0, 0, 0, 0)
+
+    path = lookup_deleted_folder(event, filesystem_content, journal_content)
+    if path is not None:
+        return Dirent(event.inode, path, -1, None, False, 0, 0, 0, 0)
+
+    raise LookupError("File %s not found" % event.name)
+
+
+def lookup_folder(event, filesystem):
+    """Lookup the parent folder in the filesystem content."""
+    for dirent in filesystem[event.parent_inode]:
+        if dirent.type == 'd' and dirent.allocated:
+            return ntpath.join(dirent.path, event.name)
+
+
+def lookup_deleted_folder(event, filesystem, journal):
+    """Lookup the parent folder in the journal content."""
+    folder_events = (e for e in journal[event.parent_inode]
+                     if 'DIRECTORY' in e.attributes
+                     and 'FILE_DELETE' in e.changes)
+
+    for folder_event in folder_events:
+        path = lookup_deleted_folder(folder_event, filesystem, journal)
+
+        return ntpath.join(path, event.name)
+
+    return lookup_folder(event, filesystem)
 
 
 def timestamp(secs, nsecs):
