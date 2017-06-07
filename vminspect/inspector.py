@@ -356,7 +356,9 @@ def parse_arguments():
 
     usnjrnl_parser = subparsers.add_parser(
         'usnjrnl', help='Parses the Update Sequence Number Journal file.')
-    usnjrnl_parser.add_argument('usnjrnl', type=str, help='path to USN file')
+    usnjrnl_parser.add_argument('-u', '--usnjrnl', type=str,
+                                default='C:\\$Extend\\$UsnJrnl',
+                                help='path to USN file')
     usnjrnl_parser.add_argument('-d', '--disk', type=str, default=None,
                                 help='path to disk image')
 
