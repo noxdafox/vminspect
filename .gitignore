@@ -1,2 +1,13 @@
-*.pyc
-__pycache__
+__pycache__/
+*.py[cod]
+*.so
+*.o
+GPATH
+GRTAGS
+GTAGS
+.coverage
+.cache
+*build*
+*eggs*
+*.egg-info/
+dist/
