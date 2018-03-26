@@ -1,6 +1,16 @@
 VMInspect
 =========
 
+:Source: https://github.com/noxdafox/vminspect
+:Documentation: https://vminspect.readthedocs.io
+:Download: https://pypi.python.org/pypi/vminspect
+
+|docs badge|
+
+.. |docs badge| image:: https://readthedocs.org/projects/vminspect/badge/?version=latest
+   :target: https://vminspect.readthedocs.io
+   :alt: Documentation Status
+
 A collection of helpers for inspecting Virtual Machine disk images.
 
 Useful for computer forensics analysis and for tests validation.
@@ -30,14 +40,3 @@ Pebble: https://pypi.python.org/pypi/Pebble
 Requests: https://pypi.python.org/pypi/requests/
 
 Python Evtx: https://pypi.python.org/pypi/python-evtx/
-
-Documentation
--------------
-
-https://pythonhosted.org/vminspect/
-
-
-Examples
---------
-
-https://pythonhosted.org/vminspect/examples.html
