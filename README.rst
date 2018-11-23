@@ -22,9 +22,9 @@ Even though all the precautions have been taken, if misused this library can cau
 
 The author is not responsible for any damage or data loss deriving from the usage of this tool.
 
-Analysing disk images may take several minutes and quite many of resources from the computer.
+Analysing disk images may take several minutes a fair amount of computation resources.
 
-The availability of hardware acceleration (KVM) as well as the use of concurrency speed up the process quite sensitively.
+To improve analysis speed, ensure Hardware Acceleration (KVM) is enable on the host.
 
 Dependencies
 ------------
